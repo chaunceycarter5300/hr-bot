@@ -1,64 +1,120 @@
 import os
 import requests
 import statsapi
-import random
 
 webhook = os.getenv("DISCORD_WEBHOOK")
 
 def get_games():
     return statsapi.schedule()
 
-def get_players(team_id):
+def get_hitters(team_id):
     try:
-        roster = statsapi.get('team_roster', {'teamId': team_id, 'rosterType': 'active'})
-        return [p['person']['fullName'] for p in roster['roster'][:9]]
+        roster = statsapi.get('team_roster', {
+            'teamId': team_id,
+            'rosterType': 'active'
+        })
+
+        hitters = []
+        for p in roster['roster']:
+            pos = p.get('position', {}).get('abbreviation', '')
+            if pos == 'P':
+                continue
+            hitters.append(p['person']['id'])
+
+        return hitters[:9]
+
     except:
         return []
 
-def fake_hr_model(players):
-    results = []
-    for p in players:
-        hr_chance = round(random.uniform(10, 30), 1)
-        results.append((p, hr_chance))
-    return sorted(results, key=lambda x: x[1], reverse=True)
+def get_player_stats(player_id):
+    try:
+        stats = statsapi.player_stat_data(player_id, group="[hitting]", type="season")
+        s = stats['stats'][0]['stats']
+
+        hr = int(s.get('homeRuns', 0))
+        slg = float(s.get('sluggingPercentage', 0))
+
+        return hr, slg
+    except:
+        return 0, 0.0
+
+def get_pitcher_hr_rate(team_id):
+    try:
+        roster = statsapi.get('team_roster', {
+            'teamId': team_id,
+            'rosterType': 'rotation'
+        })
+
+        if not roster['roster']:
+            return 1.0
+
+        pitcher_id = roster['roster'][0]['person']['id']
+        stats = statsapi.player_stat_data(pitcher_id, group="[pitching]", type="season")
+        s = stats['stats'][0]['stats']
+
+        hr_allowed = int(s.get('homeRuns', 1))
+        innings = float(s.get('inningsPitched', 1))
+
+        return hr_allowed / innings if innings > 0 else 1.0
+
+    except:
+        return 1.0
 
 def build_message():
     games = get_games()
-    msg = "🔥 **HR PICKS TODAY** 🔥\n\n"
+    msg = "🔥 **TOP HR PICKS TODAY** 🔥\n\n"
 
-    for game in games[:5]:
+    all_picks = []
+
+    for game in games[:6]:
         home = game['home_name']
         away = game['away_name']
 
-        msg += f"**{away} vs {home}**\n"
+        hitters = get_hitters(game['home_id'])
+        pitcher_factor = get_pitcher_hr_rate(game['away_id'])
 
-        players = get_players(game['home_id'])
+        for pid in hitters:
+            hr, slg = get_player_stats(pid)
 
-        if not players:
-            msg += "- No data available\n\n"
-            continue
+            score = (hr * 2) + (slg * 100) + (pitcher_factor * 50)
 
-        picks = fake_hr_model(players)[:3]
+            try:
+                name = statsapi.lookup_player(pid)[0]['fullName']
+            except:
+                continue
 
-        for name, prob in picks:
-            msg += f"- {name} ({prob}%)\n"
+            all_picks.append((name, round(score, 1), home, away))
 
-        msg += "\n"
+    # sort best picks
+    all_picks = sorted(all_picks, key=lambda x: x[1], reverse=True)
+
+    # 🔥 TOP 5
+    msg += "🔥 **TOP PLAYS** 🔥\n"
+    for p in all_picks[:5]:
+        msg += f"{p[0]} ({p[1]}) - {p[3]} vs {p[2]}\n"
+
+    msg += "\n💎 **VALUE PLAYS** 💎\n"
+    for p in all_picks[5:10]:
+        msg += f"{p[0]} ({p[1]})\n"
+
+    msg += "\n🎯 **LONGSHOTS** 🎯\n"
+    for p in all_picks[10:15]:
+        msg += f"{p[0]} ({p[1]})\n"
 
     return msg
 
 def send_to_discord(message):
     if not webhook:
-        print("⚠️ No webhook set, skipping Discord")
+        print("No webhook set")
         return
 
     try:
         requests.post(webhook, json={"content": message})
         print("✅ Sent to Discord")
     except Exception as e:
-        print("❌ Discord error:", e)
+        print("Discord error:", e)
 
 if __name__ == "__main__":
-    message = build_message()
-    print(message)
-    send_to_discord(message)
+    msg = build_message()
+    print(msg)
+    send_to_discord(msg)
