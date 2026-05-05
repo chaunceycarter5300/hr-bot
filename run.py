@@ -17,11 +17,15 @@ def get_hitters(team_id):
         hitters = []
         for p in roster['roster']:
             pos = p.get('position', {}).get('abbreviation', '')
-            if pos == 'P':
+            if pos in ['P', 'TWP']:
                 continue
-            hitters.append(p['person']['id'])
 
-        return hitters[:9]
+            hitters.append({
+                "id": p['person']['id'],
+                "name": p['person']['fullName']
+            })
+
+        return hitters
 
     except:
         return []
@@ -38,7 +42,7 @@ def get_player_stats(player_id):
     except:
         return 0, 0.0
 
-def get_pitcher_hr_rate(team_id):
+def get_pitcher_factor(team_id):
     try:
         roster = statsapi.get('team_roster', {
             'teamId': team_id,
@@ -60,46 +64,44 @@ def get_pitcher_hr_rate(team_id):
     except:
         return 1.0
 
+def score_player(player_id, pitcher_factor):
+    hr, slg = get_player_stats(player_id)
+    return (hr * 2) + (slg * 100) + (pitcher_factor * 50)
+
+def get_top_3(team_id, opponent_id):
+    hitters = get_hitters(team_id)
+    pitcher_factor = get_pitcher_factor(opponent_id)
+
+    scored = []
+    for p in hitters:
+        score = score_player(p["id"], pitcher_factor)
+        scored.append((p["name"], round(score, 1)))
+
+    scored = sorted(scored, key=lambda x: x[1], reverse=True)
+    return scored[:3]
+
 def build_message():
     games = get_games()
-    msg = "🔥 **TOP HR PICKS TODAY** 🔥\n\n"
-
-    all_picks = []
+    msg = "🔥 **HR PICKS TODAY (3 PER TEAM)** 🔥\n\n"
 
     for game in games[:6]:
         home = game['home_name']
         away = game['away_name']
 
-        hitters = get_hitters(game['home_id'])
-        pitcher_factor = get_pitcher_hr_rate(game['away_id'])
+        msg += f"**{away} vs {home}**\n"
 
-        for pid in hitters:
-            hr, slg = get_player_stats(pid)
+        away_top = get_top_3(game['away_id'], game['home_id'])
+        home_top = get_top_3(game['home_id'], game['away_id'])
 
-            score = (hr * 2) + (slg * 100) + (pitcher_factor * 50)
+        msg += f"\n{away}:\n"
+        for name, score in away_top:
+            msg += f"- {name} ({score})\n"
 
-            try:
-                name = statsapi.lookup_player(pid)[0]['fullName']
-            except:
-                continue
+        msg += f"\n{home}:\n"
+        for name, score in home_top:
+            msg += f"- {name} ({score})\n"
 
-            all_picks.append((name, round(score, 1), home, away))
-
-    # sort best picks
-    all_picks = sorted(all_picks, key=lambda x: x[1], reverse=True)
-
-    # 🔥 TOP 5
-    msg += "🔥 **TOP PLAYS** 🔥\n"
-    for p in all_picks[:5]:
-        msg += f"{p[0]} ({p[1]}) - {p[3]} vs {p[2]}\n"
-
-    msg += "\n💎 **VALUE PLAYS** 💎\n"
-    for p in all_picks[5:10]:
-        msg += f"{p[0]} ({p[1]})\n"
-
-    msg += "\n🎯 **LONGSHOTS** 🎯\n"
-    for p in all_picks[10:15]:
-        msg += f"{p[0]} ({p[1]})\n"
+        msg += "\n---------------------\n\n"
 
     return msg
 
