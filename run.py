@@ -1,11 +1,12 @@
 import os
 import requests
 import statsapi
+import random
 
 webhook = os.getenv("DISCORD_WEBHOOK")
 
 def get_games():
-    return statsapi.schedule(date=None)
+    return statsapi.schedule()
 
 def get_lineup(team_id):
     try:
@@ -15,8 +16,6 @@ def get_lineup(team_id):
         return []
 
 def fake_hr_model(players):
-    # Replace this later with your real model if you want
-    import random
     results = []
     for p in players:
         hr_chance = round(random.uniform(10, 30), 1)
@@ -27,7 +26,7 @@ def build_message():
     games = get_games()
     msg = "🔥 **HR PICKS TODAY** 🔥\n\n"
 
-    for game in games[:5]:  # limit so Discord doesn't spam
+    for game in games[:5]:
         home = game['home_name']
         away = game['away_name']
 
