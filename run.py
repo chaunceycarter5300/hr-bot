@@ -9,7 +9,8 @@ print("HR BOT (FAST BALANCED VERSION) RUNNING...\n")
 # ------------------------
 # 👉 PASTE YOUR DISCORD WEBHOOK HERE
 # ------------------------
-WEBHOOK_URL = "https://discord.com/api/webhooks/1501102710064418878/vuFOAAOIDwAytxdNEW5mVSBcGSbwIt0HfCDJJ6Pu7n7wF4SzjvrbZ2PQDm0oCCtMuOmW"
+import os
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 
 
 # ------------------------
