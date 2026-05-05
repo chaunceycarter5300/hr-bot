@@ -8,10 +8,10 @@ webhook = os.getenv("DISCORD_WEBHOOK")
 def get_games():
     return statsapi.schedule()
 
-def get_lineup(team_id):
+def get_players(team_id):
     try:
-        roster = statsapi.roster(team_id)
-        return [player['person']['fullName'] for player in roster[:9]]
+        roster = statsapi.get('team_roster', {'teamId': team_id, 'rosterType': 'active'})
+        return [p['person']['fullName'] for p in roster['roster'][:9]]
     except:
         return []
 
@@ -32,7 +32,12 @@ def build_message():
 
         msg += f"**{away} vs {home}**\n"
 
-        players = get_lineup(game['home_id'])
+        players = get_players(game['home_id'])
+
+        if not players:
+            msg += "- No data available\n\n"
+            continue
+
         picks = fake_hr_model(players)[:3]
 
         for name, prob in picks:
