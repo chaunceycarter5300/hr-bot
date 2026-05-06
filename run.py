@@ -203,8 +203,19 @@ def build_message():
     return msg
 
 def send_to_discord(message):
-    if webhook:
-        requests.post(webhook, json={"content": message})
+    if not webhook:
+        print("❌ No webhook found")
+        return
+
+    # split message so Discord doesn't reject it
+    chunks = [message[i:i+1900] for i in range(0, len(message), 1900)]
+
+    for chunk in chunks:
+        try:
+            response = requests.post(webhook, json={"content": chunk})
+            print("Status:", response.status_code)
+        except Exception as e:
+            print("Error:", e)
 
 if __name__ == "__main__":
     msg = build_message()
