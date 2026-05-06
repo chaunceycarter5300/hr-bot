@@ -104,21 +104,9 @@ def weather_boost(venue):
 def park_boost(venue):
     return PARK_BOOST.get(venue, 1.0)
 
-def streak_boost():
-    return random.uniform(0.9, 1.15)
+def calculate_score(hr, slg, barrel, hard_hit, pitcher, weather, park):
+    return ((hr * 1.5) + (slg * 80) + (barrel * 2) + (hard_hit * 0.5)) * pitcher * weather * park
 
-def matchup_boost():
-    return random.uniform(0.9, 1.1)
-
-def calculate_score(hr, slg, barrel, hard_hit, pitcher, weather, park, streak, matchup):
-    return (
-        (hr * 1.5) +
-        (slg * 80) +
-        (barrel * 2) +
-        (hard_hit * 0.5)
-    ) * pitcher * weather * park * streak * matchup
-
-# 🔥 NEW NORMALIZATION (REAL % SPREAD)
 def normalize_scores(scored_list):
     scores = [p[1] for p in scored_list]
     min_s = min(scores)
@@ -158,17 +146,10 @@ def get_team_picks(team_id, opponent_id, venue):
 
     for p in hitters:
         hr, slg, barrel, hard_hit = get_player_stats(p["id"])
-
-        score = calculate_score(
-            hr, slg, barrel, hard_hit,
-            pitcher, weather, park,
-            streak_boost(), matchup_boost()
-        )
-
+        score = calculate_score(hr, slg, barrel, hard_hit, pitcher, weather, park)
         scored.append((p["name"], score))
 
     scored = sorted(scored, key=lambda x: x[1], reverse=True)
-
     normalized = normalize_scores(scored)
 
     final = []
@@ -180,7 +161,7 @@ def get_team_picks(team_id, opponent_id, venue):
 
 def build_message():
     games = get_games()
-    msg = "⚡ **ELITE HR MODEL (REAL % FIXED)** ⚡\n\n"
+    msg = "🔥 **HR PICKS + PARLAYS** 🔥\n\n"
 
     all_players = []
 
@@ -207,19 +188,31 @@ def build_message():
 
         msg += "\n-------------------------\n\n"
 
+    # 🔥 PARLAY SECTION
     all_players = sorted(all_players, key=lambda x: x[1], reverse=True)
 
-    msg += "🔥 **TOP 5 LOCKS** 🔥\n"
-    for p in all_players[:5]:
+    top = [p for p in all_players if p[1] >= 28]
+    strong = [p for p in all_players if 22 <= p[1] < 28]
+    value = [p for p in all_players if 18 <= p[1] < 22]
+
+    msg += "💰 **BEST PARLAYS** 💰\n\n"
+
+    msg += "2-Leg (Safe):\n"
+    for p in top[:2]:
         msg += f"{p[2]} {p[0]} ({p[1]}%)\n"
 
-    msg += "\n🔥 = Favorite | 💪 = Strong | 👀 = Value | 🎯 = Longshot\n"
+    msg += "\n3-Leg (Balanced):\n"
+    for p in (top[:2] + strong[:1]):
+        msg += f"{p[2]} {p[0]} ({p[1]}%)\n"
+
+    msg += "\n4-Leg (High Payout):\n"
+    for p in (top[:2] + strong[:1] + value[:1]):
+        msg += f"{p[2]} {p[0]} ({p[1]}%)\n"
 
     return msg
 
 def send_to_discord(message):
     if not webhook:
-        print("No webhook")
         return
 
     chunks = [message[i:i+1900] for i in range(0, len(message), 1900)]
