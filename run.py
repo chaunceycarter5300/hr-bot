@@ -2,7 +2,7 @@ import os
 import requests
 import statsapi
 import random
-from datetime import datetime, timedelta
+from datetime import datetime
 
 webhook = os.getenv("DISCORD_WEBHOOK")
 weather_key = os.getenv("OPENWEATHER_API_KEY")
@@ -20,8 +20,9 @@ STADIUM_COORDS = {
     "Fenway Park": (42.3467, -71.0972)
 }
 
-def get_games_for_date(date):
-    return statsapi.schedule(date=date)
+def get_games_today():
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+    return statsapi.schedule(date=today)
 
 def get_lineup(team_id):
     try:
@@ -161,40 +162,33 @@ def get_team_picks(team_id, opponent_id, venue):
     return final[:3], final
 
 def build_message():
-    today = datetime.utcnow().strftime('%Y-%m-%d')
-    tomorrow = (datetime.utcnow() + timedelta(days=1)).strftime('%Y-%m-%d')
-
-    msg = "🔥 **HR PICKS (TODAY + TOMORROW)** 🔥\n\n"
+    games = get_games_today()
+    msg = "🔥 **TODAY'S HR PICKS** 🔥\n\n"
 
     all_players = []
 
-    for label, date in [("TODAY", today), ("TOMORROW", tomorrow)]:
-        games = get_games_for_date(date)
+    for game in games:
+        home = game['home_name']
+        away = game['away_name']
+        venue = game.get('venue_name', '')
 
-        msg += f"📅 **{label}**\n\n"
+        msg += f"🏟️ **{away} vs {home}**\n"
 
-        for game in games:
-            home = game['home_name']
-            away = game['away_name']
-            venue = game.get('venue_name', '')
+        away_top, away_all = get_team_picks(game['away_id'], game['home_id'], venue)
+        home_top, home_all = get_team_picks(game['home_id'], game['away_id'], venue)
 
-            msg += f"🏟️ **{away} vs {home}**\n"
+        all_players.extend(away_all)
+        all_players.extend(home_all)
 
-            away_top, away_all = get_team_picks(game['away_id'], game['home_id'], venue)
-            home_top, home_all = get_team_picks(game['home_id'], game['away_id'], venue)
+        msg += f"\n{away}:\n"
+        for name, percent, emoji in away_top:
+            msg += f"{emoji} {name} ({percent}%)\n"
 
-            all_players.extend(away_all)
-            all_players.extend(home_all)
+        msg += f"\n{home}:\n"
+        for name, percent, emoji in home_top:
+            msg += f"{emoji} {name} ({percent}%)\n"
 
-            msg += f"\n{away}:\n"
-            for name, percent, emoji in away_top:
-                msg += f"{emoji} {name} ({percent}%)\n"
-
-            msg += f"\n{home}:\n"
-            for name, percent, emoji in home_top:
-                msg += f"{emoji} {name} ({percent}%)\n"
-
-            msg += "\n-------------------------\n\n"
+        msg += "\n-------------------------\n\n"
 
     all_players = sorted(all_players, key=lambda x: x[1], reverse=True)
 
@@ -202,17 +196,17 @@ def build_message():
     strong = [p for p in all_players if 22 <= p[1] < 28]
     value = [p for p in all_players if 18 <= p[1] < 22]
 
-    msg += "💰 **BEST PARLAYS (ALL GAMES)** 💰\n\n"
+    msg += "💰 **BEST PARLAYS** 💰\n\n"
 
-    msg += "2-Leg (Safe):\n"
+    msg += "2-Leg:\n"
     for p in top[:2]:
         msg += f"{p[2]} {p[0]} ({p[1]}%)\n"
 
-    msg += "\n3-Leg (Balanced):\n"
+    msg += "\n3-Leg:\n"
     for p in (top[:2] + strong[:1]):
         msg += f"{p[2]} {p[0]} ({p[1]}%)\n"
 
-    msg += "\n4-Leg (High Payout):\n"
+    msg += "\n4-Leg:\n"
     for p in (top[:2] + strong[:1] + value[:1]):
         msg += f"{p[2]} {p[0]} ({p[1]}%)\n"
 
