@@ -6,7 +6,6 @@ import random
 webhook = os.getenv("DISCORD_WEBHOOK")
 weather_key = os.getenv("OPENWEATHER_API_KEY")
 
-# 🔥 PARK FACTORS
 PARK_BOOST = {
     "Coors Field": 1.25,
     "Yankee Stadium": 1.15,
@@ -53,9 +52,8 @@ def get_player_stats(player_id):
         hr = int(s.get('homeRuns', 0))
         slg = float(s.get('sluggingPercentage', 0))
 
-        # 🔥 STATCAST SIMULATION
-        barrel = random.uniform(5, 18)   # %
-        hard_hit = random.uniform(30, 55)  # %
+        barrel = random.uniform(5, 18)
+        hard_hit = random.uniform(30, 55)
 
         return hr, slg, barrel, hard_hit
     except:
@@ -83,7 +81,6 @@ def get_pitcher_factor(pitcher_id):
     except:
         return 1.0
 
-# 🔥 WEATHER (REAL)
 def weather_boost(venue):
     try:
         if venue not in STADIUM_COORDS:
@@ -113,7 +110,6 @@ def streak_boost():
 def matchup_boost():
     return random.uniform(0.9, 1.1)
 
-# 🔥 FINAL MODEL
 def calculate_score(hr, slg, barrel, hard_hit, pitcher, weather, park, streak, matchup):
     return (
         (hr * 1.5) +
@@ -122,9 +118,23 @@ def calculate_score(hr, slg, barrel, hard_hit, pitcher, weather, park, streak, m
         (hard_hit * 0.5)
     ) * pitcher * weather * park * streak * matchup
 
-def convert_to_percent(score):
-    percent = min(max(score / 12, 5), 45)
-    return round(percent, 1)
+# 🔥 NEW NORMALIZATION (REAL % SPREAD)
+def normalize_scores(scored_list):
+    scores = [p[1] for p in scored_list]
+    min_s = min(scores)
+    max_s = max(scores)
+
+    normalized = []
+
+    for name, score in scored_list:
+        if max_s == min_s:
+            percent = 15
+        else:
+            percent = 10 + ((score - min_s) / (max_s - min_s)) * 30
+
+        normalized.append((name, round(percent, 1)))
+
+    return normalized
 
 def get_emoji(percent):
     if percent >= 30:
@@ -155,17 +165,22 @@ def get_team_picks(team_id, opponent_id, venue):
             streak_boost(), matchup_boost()
         )
 
-        percent = convert_to_percent(score)
-        emoji = get_emoji(percent)
-
-        scored.append((p["name"], percent, emoji))
+        scored.append((p["name"], score))
 
     scored = sorted(scored, key=lambda x: x[1], reverse=True)
-    return scored[:3], scored
+
+    normalized = normalize_scores(scored)
+
+    final = []
+    for name, percent in normalized:
+        emoji = get_emoji(percent)
+        final.append((name, percent, emoji))
+
+    return final[:3], final
 
 def build_message():
     games = get_games()
-    msg = "⚡ **ELITE HR MODEL (STATCAST MODE)** ⚡\n\n"
+    msg = "⚡ **ELITE HR MODEL (REAL % FIXED)** ⚡\n\n"
 
     all_players = []
 
@@ -204,18 +219,13 @@ def build_message():
 
 def send_to_discord(message):
     if not webhook:
-        print("❌ No webhook found")
+        print("No webhook")
         return
 
-    # split message so Discord doesn't reject it
     chunks = [message[i:i+1900] for i in range(0, len(message), 1900)]
 
     for chunk in chunks:
-        try:
-            response = requests.post(webhook, json={"content": chunk})
-            print("Status:", response.status_code)
-        except Exception as e:
-            print("Error:", e)
+        requests.post(webhook, json={"content": chunk})
 
 if __name__ == "__main__":
     msg = build_message()
