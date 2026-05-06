@@ -2,6 +2,7 @@ import os
 import requests
 import statsapi
 import random
+from datetime import datetime, timedelta
 
 webhook = os.getenv("DISCORD_WEBHOOK")
 weather_key = os.getenv("OPENWEATHER_API_KEY")
@@ -19,8 +20,8 @@ STADIUM_COORDS = {
     "Fenway Park": (42.3467, -71.0972)
 }
 
-def get_games():
-    return statsapi.schedule()
+def get_games_for_date(date):
+    return statsapi.schedule(date=date)
 
 def get_lineup(team_id):
     try:
@@ -160,42 +161,48 @@ def get_team_picks(team_id, opponent_id, venue):
     return final[:3], final
 
 def build_message():
-    games = get_games()
-    msg = "🔥 **HR PICKS + PARLAYS** 🔥\n\n"
+    today = datetime.utcnow().strftime('%Y-%m-%d')
+    tomorrow = (datetime.utcnow() + timedelta(days=1)).strftime('%Y-%m-%d')
+
+    msg = "🔥 **HR PICKS (TODAY + TOMORROW)** 🔥\n\n"
 
     all_players = []
 
-    for game in games:
-        home = game['home_name']
-        away = game['away_name']
-        venue = game.get('venue_name', '')
+    for label, date in [("TODAY", today), ("TOMORROW", tomorrow)]:
+        games = get_games_for_date(date)
 
-        msg += f"🏟️ **{away} vs {home}**\n"
+        msg += f"📅 **{label}**\n\n"
 
-        away_top, away_all = get_team_picks(game['away_id'], game['home_id'], venue)
-        home_top, home_all = get_team_picks(game['home_id'], game['away_id'], venue)
+        for game in games:
+            home = game['home_name']
+            away = game['away_name']
+            venue = game.get('venue_name', '')
 
-        all_players.extend(away_all)
-        all_players.extend(home_all)
+            msg += f"🏟️ **{away} vs {home}**\n"
 
-        msg += f"\n{away}:\n"
-        for name, percent, emoji in away_top:
-            msg += f"{emoji} {name} ({percent}%)\n"
+            away_top, away_all = get_team_picks(game['away_id'], game['home_id'], venue)
+            home_top, home_all = get_team_picks(game['home_id'], game['away_id'], venue)
 
-        msg += f"\n{home}:\n"
-        for name, percent, emoji in home_top:
-            msg += f"{emoji} {name} ({percent}%)\n"
+            all_players.extend(away_all)
+            all_players.extend(home_all)
 
-        msg += "\n-------------------------\n\n"
+            msg += f"\n{away}:\n"
+            for name, percent, emoji in away_top:
+                msg += f"{emoji} {name} ({percent}%)\n"
 
-    # 🔥 PARLAY SECTION
+            msg += f"\n{home}:\n"
+            for name, percent, emoji in home_top:
+                msg += f"{emoji} {name} ({percent}%)\n"
+
+            msg += "\n-------------------------\n\n"
+
     all_players = sorted(all_players, key=lambda x: x[1], reverse=True)
 
     top = [p for p in all_players if p[1] >= 28]
     strong = [p for p in all_players if 22 <= p[1] < 28]
     value = [p for p in all_players if 18 <= p[1] < 22]
 
-    msg += "💰 **BEST PARLAYS** 💰\n\n"
+    msg += "💰 **BEST PARLAYS (ALL GAMES)** 💰\n\n"
 
     msg += "2-Leg (Safe):\n"
     for p in top[:2]:
@@ -213,6 +220,7 @@ def build_message():
 
 def send_to_discord(message):
     if not webhook:
+        print("No webhook set")
         return
 
     chunks = [message[i:i+1900] for i in range(0, len(message), 1900)]
