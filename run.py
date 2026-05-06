@@ -23,6 +23,7 @@ STADIUM_COORDS = {
 }
 
 def get_games_today():
+
     today = datetime.now(
         pytz.timezone("US/Eastern")
     ).strftime('%Y-%m-%d')
@@ -30,6 +31,7 @@ def get_games_today():
     return statsapi.schedule(date=today)
 
 def get_lineup(team_id):
+
     try:
         roster = statsapi.get(
             'team_roster',
@@ -89,18 +91,19 @@ def get_player_stats(player_id):
             1
         )
 
-        # HR probability %
+        # stronger realistic HR probability scaling
         hr_prob = round(
             (
-                (barrel * 1.8)
-                + (hard_hit * 0.35)
-                + (hr * 0.8)
-            ) / 4,
+                (barrel * 2.8)
+                + (hard_hit * 0.7)
+                + (hr * 1.2)
+            ) / 2.5,
             1
         )
 
+        # realistic HR probability range
         hr_prob = max(
-            5,
+            8,
             min(hr_prob, 45)
         )
 
@@ -118,7 +121,7 @@ def get_player_stats(player_id):
             0.0,
             5,
             30,
-            5
+            8
         )
 
 def get_pitcher(team_id):
