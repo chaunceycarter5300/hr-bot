@@ -2,6 +2,8 @@ import os
 import requests
 import statsapi
 import random
+import pytz
+
 from datetime import datetime
 
 webhook = os.getenv("DISCORD_WEBHOOK")
