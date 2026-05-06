@@ -31,15 +31,25 @@ def get_games_today():
 
 def get_lineup(team_id):
     try:
-        roster = statsapi.get('team_roster', {
-            'teamId': team_id,
-            'rosterType': 'active'
-        })
+        roster = statsapi.get(
+            'team_roster',
+            {
+                'teamId': team_id,
+                'rosterType': 'active'
+            }
+        )
 
         hitters = []
 
         for p in roster['roster']:
-            pos = p.get('position', {}).get('abbreviation', '')
+
+            pos = p.get(
+                'position',
+                {}
+            ).get(
+                'abbreviation',
+                ''
+            )
 
             if pos in ['P', 'TWP']:
                 continue
@@ -55,6 +65,7 @@ def get_lineup(team_id):
         return []
 
 def get_player_stats(player_id):
+
     try:
         stats = statsapi.player_stat_data(
             player_id,
@@ -67,20 +78,59 @@ def get_player_stats(player_id):
         hr = int(s.get('homeRuns', 0))
         slg = float(s.get('sluggingPercentage', 0))
 
-        barrel = random.uniform(5, 18)
-        hard_hit = random.uniform(30, 55)
+        # simulated statcast metrics
+        barrel = round(
+            random.uniform(5, 18),
+            1
+        )
 
-        return hr, slg, barrel, hard_hit
+        hard_hit = round(
+            random.uniform(30, 55),
+            1
+        )
+
+        # HR probability %
+        hr_prob = round(
+            (
+                (barrel * 1.8)
+                + (hard_hit * 0.35)
+                + (hr * 0.8)
+            ) / 4,
+            1
+        )
+
+        hr_prob = max(
+            5,
+            min(hr_prob, 45)
+        )
+
+        return (
+            hr,
+            slg,
+            barrel,
+            hard_hit,
+            hr_prob
+        )
 
     except:
-        return 0, 0.0, 5, 30
+        return (
+            0,
+            0.0,
+            5,
+            30,
+            5
+        )
 
 def get_pitcher(team_id):
+
     try:
-        roster = statsapi.get('team_roster', {
-            'teamId': team_id,
-            'rosterType': 'rotation'
-        })
+        roster = statsapi.get(
+            'team_roster',
+            {
+                'teamId': team_id,
+                'rosterType': 'rotation'
+            }
+        )
 
         return roster['roster'][0]['person']['id']
 
@@ -88,6 +138,7 @@ def get_pitcher(team_id):
         return None
 
 def get_pitcher_factor(pitcher_id):
+
     try:
         stats = statsapi.player_stat_data(
             pitcher_id,
@@ -97,10 +148,18 @@ def get_pitcher_factor(pitcher_id):
 
         s = stats['stats'][0]['stats']
 
-        hr_allowed = int(s.get('homeRuns', 1))
-        innings = float(s.get('inningsPitched', 1))
+        hr_allowed = int(
+            s.get('homeRuns', 1)
+        )
 
-        factor = hr_allowed / innings if innings > 0 else 1.0
+        innings = float(
+            s.get('inningsPitched', 1)
+        )
+
+        factor = (
+            hr_allowed / innings
+            if innings > 0 else 1.0
+        )
 
         return factor
 
@@ -108,9 +167,11 @@ def get_pitcher_factor(pitcher_id):
         return 1.0
 
 def weather_boost(venue):
+
     try:
+
         if venue not in STADIUM_COORDS:
-            return 1.0, "Neutral Weather"
+            return 1.0
 
         lat, lon = STADIUM_COORDS[venue]
 
@@ -122,31 +183,57 @@ def weather_boost(venue):
 
         data = requests.get(url).json()
 
-        wind_speed = data.get("wind", {}).get("speed", 5)
-        wind_deg = data.get("wind", {}).get("deg", 180)
+        wind_speed = data.get(
+            "wind",
+            {}
+        ).get(
+            "speed",
+            5
+        )
+
+        wind_deg = data.get(
+            "wind",
+            {}
+        ).get(
+            "deg",
+            180
+        )
 
         if 90 <= wind_deg <= 270:
-            return 1 + (wind_speed / 35), "✅ Wind Out"
+            return 1 + (wind_speed / 35)
 
-        return 1 - (wind_speed / 70), "⚠️ Wind In"
+        return 1 - (wind_speed / 70)
 
     except:
-        return 1.0, "Neutral Weather"
+        return 1.0
 
 def park_boost(venue):
     return PARK_BOOST.get(venue, 1.0)
 
-def calculate_score(hr, slg, barrel, hard_hit,
-                    pitcher, weather, park):
+def calculate_score(
+    hr,
+    slg,
+    barrel,
+    hard_hit,
+    pitcher,
+    weather,
+    park
+):
 
     return (
-        (hr * 1.5)
-        + (slg * 80)
-        + (barrel * 2)
-        + (hard_hit * 0.5)
-    ) * pitcher * weather * park
+        (
+            (hr * 1.5)
+            + (slg * 80)
+            + (barrel * 2)
+            + (hard_hit * 0.5)
+        )
+        * pitcher
+        * weather
+        * park
+    )
 
 def normalize_scores(scored_list):
+
     scores = [p[1] for p in scored_list]
 
     min_s = min(scores)
@@ -154,7 +241,12 @@ def normalize_scores(scored_list):
 
     normalized = []
 
-    for name, score, tags in scored_list:
+    for (
+        name,
+        score,
+        tags,
+        hr_prob
+    ) in scored_list:
 
         if max_s == min_s:
             percent = 15
@@ -166,13 +258,22 @@ def normalize_scores(scored_list):
             ) * 30
 
         normalized.append(
-            (name, round(percent, 1), tags)
+            (
+                name,
+                round(percent, 1),
+                tags,
+                hr_prob
+            )
         )
 
     return normalized
 
 def get_emoji(percent):
-    if percent >= 30:
+
+    if percent >= 35:
+        return "💣"
+
+    elif percent >= 30:
         return "🔥"
 
     elif percent >= 24:
@@ -183,7 +284,11 @@ def get_emoji(percent):
 
     return "🎯"
 
-def get_team_picks(team_id, opponent_id, venue):
+def get_team_picks(
+    team_id,
+    opponent_id,
+    venue
+):
 
     hitters = get_lineup(team_id)
 
@@ -194,7 +299,7 @@ def get_team_picks(team_id, opponent_id, venue):
         if pitcher_id else 1.0
     )
 
-    weather, weather_tag = weather_boost(venue)
+    weather = weather_boost(venue)
 
     park = park_boost(venue)
 
@@ -202,11 +307,27 @@ def get_team_picks(team_id, opponent_id, venue):
 
     for p in hitters:
 
-        hr, slg, barrel, hard_hit = (
-            get_player_stats(p["id"])
-        )
+        (
+            hr,
+            slg,
+            barrel,
+            hard_hit,
+            hr_prob
+        ) = get_player_stats(p["id"])
 
         tags = []
+
+        tags.append(
+            f"💥 Hard Hit: {hard_hit}%"
+        )
+
+        tags.append(
+            f"🛢️ Barrel: {barrel}%"
+        )
+
+        tags.append(
+            f"🚀 HR Probability: {hr_prob}%"
+        )
 
         if weather > 1:
             tags.append("✅ Wind Out")
@@ -222,7 +343,7 @@ def get_team_picks(team_id, opponent_id, venue):
             tags.append("✅ Great Park")
 
         if barrel > 12:
-            tags.append("✅ Hot Bat")
+            tags.append("🔥 Hot Bat")
 
         score = calculate_score(
             hr,
@@ -235,7 +356,12 @@ def get_team_picks(team_id, opponent_id, venue):
         )
 
         scored.append(
-            (p["name"], score, tags)
+            (
+                p["name"],
+                score,
+                tags,
+                hr_prob
+            )
         )
 
     scored = sorted(
@@ -248,12 +374,23 @@ def get_team_picks(team_id, opponent_id, venue):
 
     final = []
 
-    for name, percent, tags in normalized:
+    for (
+        name,
+        percent,
+        tags,
+        hr_prob
+    ) in normalized:
 
         emoji = get_emoji(percent)
 
         final.append(
-            (name, percent, emoji, tags)
+            (
+                name,
+                percent,
+                emoji,
+                tags,
+                hr_prob
+            )
         )
 
     return final[:3], final
@@ -262,7 +399,7 @@ def build_message():
 
     games = get_games_today()
 
-    msg = "🔥 **FINAL HR PICKS** 🔥\n\n"
+    msg = "🔥 FINAL HR PICKS 🔥\n\n"
 
     all_players = []
 
@@ -271,9 +408,14 @@ def build_message():
         home = game['home_name']
         away = game['away_name']
 
-        venue = game.get('venue_name', '')
+        venue = game.get(
+            'venue_name',
+            ''
+        )
 
-        msg += f"🏟️ **{away} vs {home}**\n"
+        msg += (
+            f"🏟️ {away} vs {home}\n"
+        )
 
         away_top, away_all = get_team_picks(
             game['away_id'],
@@ -292,23 +434,44 @@ def build_message():
 
         msg += f"\n{away}:\n"
 
-        for i, (name, percent, emoji, tags) in enumerate(away_top):
+        for i, (
+            name,
+            percent,
+            emoji,
+            tags,
+            hr_prob
+        ) in enumerate(away_top):
 
-            msg += f"{emoji} {name} ({percent}%)\n"
+            msg += (
+                f"{emoji} {name} "
+                f"({percent}%)\n"
+            )
 
             for t in tags:
                 msg += f"{t}\n"
 
             if i == 0:
                 msg += "🎯 BEST PLAY\n"
+
+            if hr_prob >= 40:
+                msg += "💣 NUKE PLAY\n"
 
             msg += "\n"
 
         msg += f"\n{home}:\n"
 
-        for i, (name, percent, emoji, tags) in enumerate(home_top):
+        for i, (
+            name,
+            percent,
+            emoji,
+            tags,
+            hr_prob
+        ) in enumerate(home_top):
 
-            msg += f"{emoji} {name} ({percent}%)\n"
+            msg += (
+                f"{emoji} {name} "
+                f"({percent}%)\n"
+            )
 
             for t in tags:
                 msg += f"{t}\n"
@@ -316,9 +479,14 @@ def build_message():
             if i == 0:
                 msg += "🎯 BEST PLAY\n"
 
+            if hr_prob >= 40:
+                msg += "💣 NUKE PLAY\n"
+
             msg += "\n"
 
-        msg += "-------------------------\n\n"
+        msg += (
+            "-------------------------\n\n"
+        )
 
     all_players = sorted(
         all_players,
@@ -326,26 +494,50 @@ def build_message():
         reverse=True
     )
 
-    top = [p for p in all_players if p[1] >= 28]
-    strong = [p for p in all_players if 22 <= p[1] < 28]
-    value = [p for p in all_players if 18 <= p[1] < 22]
+    top = [
+        p for p in all_players
+        if p[1] >= 28
+    ]
 
-    msg += "💰 **BEST PARLAYS** 💰\n\n"
+    strong = [
+        p for p in all_players
+        if 22 <= p[1] < 28
+    ]
+
+    value = [
+        p for p in all_players
+        if 18 <= p[1] < 22
+    ]
+
+    msg += "💰 BEST PARLAYS 💰\n\n"
 
     msg += "2-Leg:\n"
 
     for p in top[:2]:
-        msg += f"{p[0]} ({p[1]}%)\n"
+        msg += (
+            f"{p[0]} ({p[1]}%)\n"
+        )
 
     msg += "\n3-Leg:\n"
 
-    for p in (top[:2] + strong[:1]):
-        msg += f"{p[0]} ({p[1]}%)\n"
+    for p in (
+        top[:2]
+        + strong[:1]
+    ):
+        msg += (
+            f"{p[0]} ({p[1]}%)\n"
+        )
 
     msg += "\n4-Leg:\n"
 
-    for p in (top[:2] + strong[:1] + value[:1]):
-        msg += f"{p[0]} ({p[1]}%)\n"
+    for p in (
+        top[:2]
+        + strong[:1]
+        + value[:1]
+    ):
+        msg += (
+            f"{p[0]} ({p[1]}%)\n"
+        )
 
     return msg
 
@@ -357,10 +549,15 @@ def send_to_discord(message):
 
     chunks = [
         message[i:i+1900]
-        for i in range(0, len(message), 1900)
+        for i in range(
+            0,
+            len(message),
+            1900
+        )
     ]
 
     for chunk in chunks:
+
         requests.post(
             webhook,
             json={"content": chunk}
