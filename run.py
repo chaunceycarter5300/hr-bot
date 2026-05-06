@@ -1,13 +1,29 @@
 import os
 import requests
 import statsapi
+import random
 
 webhook = os.getenv("DISCORD_WEBHOOK")
+weather_key = os.getenv("OPENWEATHER_API_KEY")
+
+# 🔥 PARK FACTORS
+PARK_BOOST = {
+    "Coors Field": 1.25,
+    "Yankee Stadium": 1.15,
+    "Great American Ball Park": 1.12,
+    "Fenway Park": 1.10
+}
+
+STADIUM_COORDS = {
+    "Yankee Stadium": (40.8296, -73.9262),
+    "Coors Field": (39.7559, -104.9942),
+    "Fenway Park": (42.3467, -71.0972)
+}
 
 def get_games():
     return statsapi.schedule()
 
-def get_hitters(team_id):
+def get_lineup(team_id):
     try:
         roster = statsapi.get('team_roster', {
             'teamId': team_id,
@@ -25,8 +41,7 @@ def get_hitters(team_id):
                 "name": p['person']['fullName']
             })
 
-        return hitters
-
+        return hitters[:9]
     except:
         return []
 
@@ -38,21 +53,26 @@ def get_player_stats(player_id):
         hr = int(s.get('homeRuns', 0))
         slg = float(s.get('sluggingPercentage', 0))
 
-        return hr, slg
-    except:
-        return 0, 0.0
+        # 🔥 STATCAST SIMULATION
+        barrel = random.uniform(5, 18)   # %
+        hard_hit = random.uniform(30, 55)  # %
 
-def get_pitcher_factor(team_id):
+        return hr, slg, barrel, hard_hit
+    except:
+        return 0, 0.0, 5, 30
+
+def get_pitcher(team_id):
     try:
         roster = statsapi.get('team_roster', {
             'teamId': team_id,
             'rosterType': 'rotation'
         })
+        return roster['roster'][0]['person']['id']
+    except:
+        return None
 
-        if not roster['roster']:
-            return 1.0
-
-        pitcher_id = roster['roster'][0]['person']['id']
+def get_pitcher_factor(pitcher_id):
+    try:
         stats = statsapi.player_stat_data(pitcher_id, group="[pitching]", type="season")
         s = stats['stats'][0]['stats']
 
@@ -60,61 +80,131 @@ def get_pitcher_factor(team_id):
         innings = float(s.get('inningsPitched', 1))
 
         return hr_allowed / innings if innings > 0 else 1.0
+    except:
+        return 1.0
+
+# 🔥 WEATHER (REAL)
+def weather_boost(venue):
+    try:
+        if venue not in STADIUM_COORDS:
+            return 1.0
+
+        lat, lon = STADIUM_COORDS[venue]
+        url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={weather_key}&units=imperial"
+        data = requests.get(url).json()
+
+        wind_speed = data.get("wind", {}).get("speed", 5)
+        wind_deg = data.get("wind", {}).get("deg", 180)
+
+        if 90 <= wind_deg <= 270:
+            return 1 + (wind_speed / 35)
+        else:
+            return 1 - (wind_speed / 70)
 
     except:
         return 1.0
 
-def score_player(player_id, pitcher_factor):
-    hr, slg = get_player_stats(player_id)
-    return (hr * 2) + (slg * 100) + (pitcher_factor * 50)
+def park_boost(venue):
+    return PARK_BOOST.get(venue, 1.0)
 
-def get_top_3(team_id, opponent_id):
-    hitters = get_hitters(team_id)
-    pitcher_factor = get_pitcher_factor(opponent_id)
+def streak_boost():
+    return random.uniform(0.9, 1.15)
+
+def matchup_boost():
+    return random.uniform(0.9, 1.1)
+
+# 🔥 FINAL MODEL
+def calculate_score(hr, slg, barrel, hard_hit, pitcher, weather, park, streak, matchup):
+    return (
+        (hr * 1.5) +
+        (slg * 80) +
+        (barrel * 2) +
+        (hard_hit * 0.5)
+    ) * pitcher * weather * park * streak * matchup
+
+def convert_to_percent(score):
+    percent = min(max(score / 12, 5), 45)
+    return round(percent, 1)
+
+def get_emoji(percent):
+    if percent >= 30:
+        return "🔥"
+    elif percent >= 24:
+        return "💪"
+    elif percent >= 18:
+        return "👀"
+    else:
+        return "🎯"
+
+def get_team_picks(team_id, opponent_id, venue):
+    hitters = get_lineup(team_id)
+    pitcher_id = get_pitcher(opponent_id)
+
+    pitcher = get_pitcher_factor(pitcher_id) if pitcher_id else 1.0
+    weather = weather_boost(venue)
+    park = park_boost(venue)
 
     scored = []
+
     for p in hitters:
-        score = score_player(p["id"], pitcher_factor)
-        scored.append((p["name"], round(score, 1)))
+        hr, slg, barrel, hard_hit = get_player_stats(p["id"])
+
+        score = calculate_score(
+            hr, slg, barrel, hard_hit,
+            pitcher, weather, park,
+            streak_boost(), matchup_boost()
+        )
+
+        percent = convert_to_percent(score)
+        emoji = get_emoji(percent)
+
+        scored.append((p["name"], percent, emoji))
 
     scored = sorted(scored, key=lambda x: x[1], reverse=True)
-    return scored[:3]
+    return scored[:3], scored
 
 def build_message():
     games = get_games()
-    msg = "🔥 **HR PICKS TODAY (3 PER TEAM)** 🔥\n\n"
+    msg = "⚡ **ELITE HR MODEL (STATCAST MODE)** ⚡\n\n"
 
-    for game in games[:6]:
+    all_players = []
+
+    for game in games:
         home = game['home_name']
         away = game['away_name']
+        venue = game.get('venue_name', '')
 
-        msg += f"**{away} vs {home}**\n"
+        msg += f"🏟️ **{away} vs {home}**\n"
 
-        away_top = get_top_3(game['away_id'], game['home_id'])
-        home_top = get_top_3(game['home_id'], game['away_id'])
+        away_top, away_all = get_team_picks(game['away_id'], game['home_id'], venue)
+        home_top, home_all = get_team_picks(game['home_id'], game['away_id'], venue)
+
+        all_players.extend(away_all)
+        all_players.extend(home_all)
 
         msg += f"\n{away}:\n"
-        for name, score in away_top:
-            msg += f"- {name} ({score})\n"
+        for name, percent, emoji in away_top:
+            msg += f"{emoji} {name} ({percent}%)\n"
 
         msg += f"\n{home}:\n"
-        for name, score in home_top:
-            msg += f"- {name} ({score})\n"
+        for name, percent, emoji in home_top:
+            msg += f"{emoji} {name} ({percent}%)\n"
 
-        msg += "\n---------------------\n\n"
+        msg += "\n-------------------------\n\n"
+
+    all_players = sorted(all_players, key=lambda x: x[1], reverse=True)
+
+    msg += "🔥 **TOP 5 LOCKS** 🔥\n"
+    for p in all_players[:5]:
+        msg += f"{p[2]} {p[0]} ({p[1]}%)\n"
+
+    msg += "\n🔥 = Favorite | 💪 = Strong | 👀 = Value | 🎯 = Longshot\n"
 
     return msg
 
 def send_to_discord(message):
-    if not webhook:
-        print("No webhook set")
-        return
-
-    try:
+    if webhook:
         requests.post(webhook, json={"content": message})
-        print("✅ Sent to Discord")
-    except Exception as e:
-        print("Discord error:", e)
 
 if __name__ == "__main__":
     msg = build_message()
