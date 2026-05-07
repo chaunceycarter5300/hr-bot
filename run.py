@@ -3,7 +3,6 @@ import requests
 import pandas as pd
 import statsapi
 import pytz
-import random
 
 from datetime import datetime
 
@@ -19,7 +18,6 @@ weather_key = os.getenv("OPENWEATHER_API_KEY")
 # ==============================
 
 TOP_PLAYS_TO_SHOW = 5
-MAX_PLAYERS_PER_TEAM = 1
 
 # ==============================
 # WEATHER / PARKS
@@ -93,92 +91,6 @@ def get_lineup(team_id):
         print(f"Lineup Error: {e}")
 
         return []
-
-# ==============================
-# PLAYER STATS
-# ==============================
-
-def get_player_stats(player_name, player_id):
-
-    try:
-
-        stats = statsapi.player_stat_data(
-            player_id,
-            group="[hitting]",
-            type="season"
-        )
-
-        s = stats['stats'][0]['stats']
-
-        hr = int(
-            s.get('homeRuns', 0)
-        )
-
-        slg = float(
-            s.get('sluggingPercentage', 0)
-        )
-
-        ops = float(
-            s.get('ops', 0.700)
-        )
-
-        # ==========================
-        # SMART POWER METRICS
-        # ==========================
-
-        barrel = round(
-            (
-                (hr * 0.7)
-                + (ops * 10)
-                + random.uniform(5, 10)
-            ),
-            1
-        )
-
-        hard_hit = round(
-            (
-                (slg * 100)
-                + random.uniform(5, 15)
-            ),
-            1
-        )
-
-        fly_ball = round(
-            random.uniform(25, 48),
-            1
-        )
-
-        # ==========================
-        # HR SCORE
-        # ==========================
-
-        hr_score = round(
-            (
-                (barrel * 0.40)
-                + (hard_hit * 0.20)
-                + (fly_ball * 0.20)
-                + (ops * 25)
-                + (hr * 0.15)
-            ),
-            1
-        )
-
-        return {
-            "hr": hr,
-            "slg": slg,
-            "barrel": barrel,
-            "hard_hit": hard_hit,
-            "fly_ball": fly_ball,
-            "hr_score": hr_score
-        }
-
-    except Exception as e:
-
-        print(
-            f"Player Stat Error: {e}"
-        )
-
-        return None
 
 # ==============================
 # PITCHERS
@@ -291,7 +203,7 @@ def park_boost(venue):
     )
 
 # ==============================
-# TEAM PICKS
+# REAL HR MODEL
 # ==============================
 
 def get_team_picks(
@@ -304,7 +216,7 @@ def get_team_picks(
 
     pitcher_id = get_pitcher(opponent_id)
 
-    pitcher = (
+    pitcher_factor = (
         get_pitcher_factor(pitcher_id)
         if pitcher_id else 1.0
     )
@@ -316,72 +228,104 @@ def get_team_picks(
 
     for p in hitters:
 
-        stats = get_player_stats(
-            p['name'],
-            p['id']
-        )
+        try:
 
-        if not stats:
-            continue
-
-        barrel = stats['barrel']
-        hard_hit = stats['hard_hit']
-        fly_ball = stats['fly_ball']
-        hr_score = stats['hr_score']
-
-        # ==========================
-        # MUCH LOOSER FILTERS
-        # ==========================
-
-        if barrel < 5:
-            continue
-
-        if hard_hit < 20:
-            continue
-
-        if fly_ball < 20:
-            continue
-
-        score = hr_score
-
-        score *= weather
-        score *= park
-
-        if pitcher > 0.15:
-            score *= 1.10
-        else:
-            score *= 0.90
-
-        tags = [
-            f"💥 Hard Hit: {hard_hit}%",
-            f"🛢️ Barrel: {barrel}%",
-            f"☁️ Fly Ball: {fly_ball}%",
-            f"🚀 HR Score: {round(score,1)}"
-        ]
-
-        if weather > 1:
-            tags.append("✅ Wind Out")
-        else:
-            tags.append("⚠️ Wind In")
-
-        if pitcher > 0.15:
-            tags.append("✅ Weak Pitcher")
-        else:
-            tags.append("⚠️ Tough Pitcher")
-
-        if park > 1.1:
-            tags.append("✅ Great Park")
-
-        if barrel >= 14:
-            tags.append("🔥 Elite Barrel")
-
-        scored.append(
-            (
-                p['name'],
-                round(score,1),
-                tags
+            stats = statsapi.player_stat_data(
+                p['id'],
+                group="[hitting]",
+                type="season"
             )
-        )
+
+            s = stats['stats'][0]['stats']
+
+            hr = int(
+                s.get('homeRuns', 0)
+            )
+
+            slg = float(
+                s.get('sluggingPercentage', 0)
+            )
+
+            ops = float(
+                s.get('ops', 0.700)
+            )
+
+            avg = float(
+                s.get('avg', 0.250)
+            )
+
+            hits = int(
+                s.get('hits', 0)
+            )
+
+            games = int(
+                s.get('gamesPlayed', 1)
+            )
+
+            # ==========================
+            # RECENT FORM
+            # ==========================
+
+            recent_form = (
+                hits / games
+            ) * 10
+
+            # ==========================
+            # HR SCORE
+            # ==========================
+
+            score = (
+                (hr * 5)
+                + (slg * 120)
+                + (ops * 90)
+                + (avg * 60)
+                + recent_form
+            )
+
+            # ==========================
+            # ENVIRONMENT BOOSTS
+            # ==========================
+
+            score *= weather
+            score *= park
+
+            if pitcher_factor > 0.15:
+                score *= 1.10
+            else:
+                score *= 0.92
+
+            tags = [
+                f"💣 HRs: {hr}",
+                f"⚾ SLG: {slg}",
+                f"🔥 OPS: {ops}",
+                f"🎯 AVG: {avg}",
+                f"📈 Form Score: {round(recent_form,1)}"
+            ]
+
+            if weather > 1:
+                tags.append("✅ Wind Out")
+
+            if pitcher_factor > 0.15:
+                tags.append("✅ Weak Pitcher")
+
+            if park > 1.1:
+                tags.append("✅ Great Park")
+
+            scored.append(
+                (
+                    p['name'],
+                    round(score,1),
+                    tags
+                )
+            )
+
+        except Exception as e:
+
+            print(
+                f"Player Error: {e}"
+            )
+
+            continue
 
     scored = sorted(
         scored,
@@ -389,10 +333,7 @@ def get_team_picks(
         reverse=True
     )
 
-    if not scored:
-        return []
-
-    return scored[:MAX_PLAYERS_PER_TEAM]
+    return scored[:3]
 
 # ==============================
 # BUILD MESSAGE
