@@ -1,90 +1,87 @@
 import os
+import requests
+import pandas as pd
+import statsapi
+import pytz
 
-            pos = p.get(
-                'position',
-                {}
-            ).get(
-                'abbreviation', '')
-
-            if pos in ['P', 'TWP']:
-                continue
-
-            hitters.append({
-                "id": p['person']['id'],
-                "name": p['person']['fullName']
-            })
-
-        return hitters[:9]
-
-    except Exception as e:
-
-        print(f"Lineup Error: {e}")
-
-        return []
+from datetime import datetime
+from pybaseball import batting_stats
 
 # ==============================
-# REAL PLAYER STATS
+# ENV
+# ==============================
+
+webhook = os.getenv("DISCORD_WEBHOOK")
+weather_key = os.getenv("OPENWEATHER_API_KEY")
+
+# ==============================
+# SETTINGS
+# ==============================
+
+MIN_BARREL = 10
+MIN_HARD_HIT = 40
+MIN_FLYBALL = 35
+
+TOP_PLAYS_TO_SHOW = 5
+MAX_PLAYERS_PER_TEAM = 1
+
+# ==============================
+# WEATHER / PARKS
+# ==============================
+
+PARK_BOOST = {
+    "Coors Field": 1.25,
+    "Yankee Stadium": 1.15,
+    "Great American Ball Park": 1.12,
+    "Fenway Park": 1.10
+}
+
+STADIUM_COORDS = {
+    "Yankee Stadium": (40.8296, -73.9262),
+    "Coors Field": (39.7559, -104.9942),
+    "Fenway Park": (42.3467, -71.0972)
+}
+
+# ==============================
+# LOAD REAL STATCAST DATA
+# ==============================
+
+print("Loading Statcast data...")
+
+statcast_df = batting_stats(2025)
+
+# ==============================
+# GET TODAY GAMES
 # ==============================
 
 
-def get_player_stats(player_name, player_id):
+def get_games_today():
+
+    today = datetime.now(
+        pytz.timezone("US/Eastern")
+    ).strftime('%Y-%m-%d')
+
+    return statsapi.schedule(date=today)
+
+# ==============================
+# GET LINEUP
+# ==============================
+
+
+def get_lineup(team_id):
 
     try:
 
-        stats = statsapi.player_stat_data(
-            player_id,
-            group="[hitting]",
-            type="season"
+        roster = statsapi.get(
+            'team_roster',
+            {
+                'teamId': team_id,
+                'rosterType': 'active'
+            }
         )
 
-        s = stats['stats'][0]['stats']
+        hitters = []
 
-        hr = int(s.get('homeRuns', 0))
-        slg = float(s.get('sluggingPercentage', 0))
+        for p in roster['roster']:
 
-        row = statcast_df[
-            statcast_df['Name'] == player_name
-        ]
-
-        if row.empty:
-            return None
-
-        barrel = float(row['Barrel%'].iloc[0])
-        hard_hit = float(row['HardHit%'].iloc[0])
-        fly_ball = float(row['FB%'].iloc[0])
-        launch_angle = float(row['LA'].iloc[0])
-
-        hr_score = round(
-            (
-                (barrel * 0.40)
-                + (hard_hit * 0.20)
-                + (fly_ball * 0.20)
-                + (launch_angle * 0.10)
-                + (hr * 0.10)
-            ),
-            1
-        )
-
-        return {
-            "hr": hr,
-            "slg": slg,
-            "barrel": barrel,
-            "hard_hit": hard_hit,
-            "fly_ball": fly_ball,
-            "launch_angle": launch_angle,
-            "hr_score": hr_score
-        }
-
-    except Exception as e:
-
-        print(f"Player Stat Error: {e}")
-
-        return None
-
-# ==============================
-# PITCHERS
-# ==============================
-
-
-def get_pitcher(team_id):
     send_to_discord(msg)
