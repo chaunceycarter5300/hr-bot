@@ -14,12 +14,6 @@ webhook = os.getenv("DISCORD_WEBHOOK")
 weather_key = os.getenv("OPENWEATHER_API_KEY")
 
 # ==============================
-# SETTINGS
-# ==============================
-
-TOP_PLAYS_TO_SHOW = 5
-
-# ==============================
 # WEATHER / PARKS
 # ==============================
 
@@ -345,9 +339,10 @@ def build_message():
 
     msg = "🔥 FINAL HR PICKS 🔥\n\n"
 
-    all_plays = []
-
     for game in games:
+
+        away_team = game['away_name']
+        home_team = game['home_name']
 
         venue = game.get(
             'venue_name',
@@ -366,31 +361,55 @@ def build_message():
             venue
         )
 
-        all_plays.extend(away)
-        all_plays.extend(home)
-
-    all_plays = sorted(
-        all_plays,
-        key=lambda x: x[1],
-        reverse=True
-    )
-
-    for i, (
-        name,
-        score,
-        tags
-    ) in enumerate(
-        all_plays[:TOP_PLAYS_TO_SHOW]
-    ):
-
         msg += (
-            f"{i+1}. 💣 {name}\n"
+            f"🏟️ {away_team} vs {home_team}\n\n"
         )
 
-        for t in tags:
-            msg += f"{t}\n"
+        # ==========================
+        # AWAY TEAM
+        # ==========================
 
-        msg += "🎯 BEST PLAY\n\n"
+        msg += f"🔥 {away_team} TOP 3 PLAYS\n\n"
+
+        for i, (
+            name,
+            score,
+            tags
+        ) in enumerate(away):
+
+            msg += (
+                f"{i+1}. 💣 {name}\n"
+            )
+
+            for t in tags:
+                msg += f"{t}\n"
+
+            msg += "🎯 BEST PLAY\n\n"
+
+        # ==========================
+        # HOME TEAM
+        # ==========================
+
+        msg += f"🔥 {home_team} TOP 3 PLAYS\n\n"
+
+        for i, (
+            name,
+            score,
+            tags
+        ) in enumerate(home):
+
+            msg += (
+                f"{i+1}. 💣 {name}\n"
+            )
+
+            for t in tags:
+                msg += f"{t}\n"
+
+            msg += "🎯 BEST PLAY\n\n"
+
+        msg += (
+            "----------------------\n\n"
+        )
 
     return msg
 
