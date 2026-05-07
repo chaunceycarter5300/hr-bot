@@ -236,8 +236,12 @@ def get_team_picks(
                 s.get('homeRuns', 0)
             )
 
+            # ==========================
+            # FIXED SLG / OPS
+            # ==========================
+
             slg = float(
-                s.get('sluggingPercentage', 0)
+                s.get('slg', 0.400)
             )
 
             ops = float(
