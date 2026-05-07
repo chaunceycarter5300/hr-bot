@@ -18,10 +18,6 @@ weather_key = os.getenv("OPENWEATHER_API_KEY")
 # SETTINGS
 # ==============================
 
-MIN_BARREL = 7
-MIN_HARD_HIT = 30
-MIN_FLYBALL = 25
-
 TOP_PLAYS_TO_SHOW = 5
 MAX_PLAYERS_PER_TEAM = 1
 
@@ -120,10 +116,6 @@ def get_player_stats(player_name, player_id):
 
         slg = float(
             s.get('sluggingPercentage', 0)
-        )
-
-        avg = float(
-            s.get('avg', 0.250)
         )
 
         ops = float(
@@ -338,16 +330,16 @@ def get_team_picks(
         hr_score = stats['hr_score']
 
         # ==========================
-        # FILTERS
+        # MUCH LOOSER FILTERS
         # ==========================
 
-        if barrel < MIN_BARREL:
+        if barrel < 5:
             continue
 
-        if hard_hit < MIN_HARD_HIT:
+        if hard_hit < 20:
             continue
 
-        if fly_ball < MIN_FLYBALL:
+        if fly_ball < 20:
             continue
 
         score = hr_score
@@ -356,9 +348,9 @@ def get_team_picks(
         score *= park
 
         if pitcher > 0.15:
-            score *= 1.15
+            score *= 1.10
         else:
-            score *= 0.85
+            score *= 0.90
 
         tags = [
             f"💥 Hard Hit: {hard_hit}%",
@@ -396,6 +388,9 @@ def get_team_picks(
         key=lambda x: x[1],
         reverse=True
     )
+
+    if not scored:
+        return []
 
     return scored[:MAX_PLAYERS_PER_TEAM]
 
