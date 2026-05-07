@@ -24,6 +24,7 @@ jobs:
 
       -- name: Install packages
   run: pip install pandas requests mlb-statsapi pytz pybaseball
+  
       - name: Run bot
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
