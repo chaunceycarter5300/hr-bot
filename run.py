@@ -18,9 +18,9 @@ weather_key = os.getenv("OPENWEATHER_API_KEY")
 # SETTINGS
 # ==============================
 
-MIN_BARREL = 10
-MIN_HARD_HIT = 40
-MIN_FLYBALL = 35
+MIN_BARREL = 7
+MIN_HARD_HIT = 30
+MIN_FLYBALL = 25
 
 TOP_PLAYS_TO_SHOW = 5
 MAX_PLAYERS_PER_TEAM = 1
@@ -152,7 +152,7 @@ def get_player_stats(player_name, player_id):
         )
 
         fly_ball = round(
-            random.uniform(32, 48),
+            random.uniform(25, 48),
             1
         )
 
