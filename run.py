@@ -208,8 +208,15 @@ def get_statcast_data(player_id):
             2025
         )
 
+        # FIX PLAYER ID TYPES
+
+        data['player_id'] = data[
+            'player_id'
+        ].astype(str)
+
         player = data[
-            data['player_id'] == player_id
+            data['player_id']
+            == str(player_id)
         ]
 
         if player.empty:
@@ -314,6 +321,8 @@ def get_green_flags(tags):
             or "Great Park" in t
             or "Top Lineup Spot" in t
             or "Strong Power Split" in t
+            or "Elite Barrel" in t
+            or "Elite Hard Hit" in t
         ):
 
             green_flags += 1
@@ -410,7 +419,7 @@ def get_team_picks(
             if len(scored) < 4:
                 lineup_boost = 1.10
 
-            # SCORE
+            # ADVANCED SCORE
 
             score = (
                 (hr * 5)
@@ -476,6 +485,12 @@ def get_team_picks(
                 f"🔥 HR Form: {round(recent_hr_form,1)}",
                 f"🏷️ {label}"
             ]
+
+            if barrel_pct >= 12:
+                tags.append("✅ Elite Barrel")
+
+            if hard_hit_pct >= 45:
+                tags.append("✅ Elite Hard Hit")
 
             if split_boost > 1:
                 tags.append("✅ Strong Power Split")
