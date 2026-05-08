@@ -1,6 +1,5 @@
 import os
 import requests
-import pandas as pd
 import statsapi
 import pytz
 
@@ -14,7 +13,7 @@ webhook = os.getenv("DISCORD_WEBHOOK")
 weather_key = os.getenv("OPENWEATHER_API_KEY")
 
 # ==============================
-# WEATHER / PARKS
+# WEATHER / PARK BOOSTS
 # ==============================
 
 PARK_BOOST = {
@@ -70,6 +69,7 @@ def get_lineup(team_id):
                 ''
             )
 
+            # REMOVE PITCHERS
             if pos in ['P', 'TWP']:
                 continue
 
@@ -176,9 +176,11 @@ def weather_boost(venue):
             180
         )
 
+        # WIND OUT
         if 90 <= wind_deg <= 270:
             return 1 + (wind_speed / 35)
 
+        # WIND IN
         return 1 - (wind_speed / 70)
 
     except:
@@ -212,6 +214,8 @@ def classify_pick(
     park
 ):
 
+    # SAFE PLAY
+
     if (
         slg >= 0.550
         and ops >= 0.900
@@ -221,6 +225,8 @@ def classify_pick(
 
         return "🔥 SAFE PLAY"
 
+    # HIGH UPSIDE
+
     if (
         recent_hr_form >= 3
         or pitcher_factor > 0.15
@@ -229,6 +235,8 @@ def classify_pick(
     ):
 
         return "💥 HIGH UPSIDE"
+
+    # LONGSHOT
 
     return "⚠️ LONGSHOT"
 
@@ -292,40 +300,30 @@ def get_team_picks(
                 s.get('gamesPlayed', 1)
             )
 
-            # ==========================
             # RECENT FORM
-            # ==========================
 
             recent_form = (
                 hits / games
             ) * 10
 
-            # ==========================
             # RECENT HR FORM
-            # ==========================
 
             recent_hr_form = (
                 hr / games
             ) * 20
 
-            # ==========================
             # ISO POWER
-            # ==========================
 
             iso = slg - avg
 
-            # ==========================
-            # BATTING ORDER BOOST
-            # ==========================
+            # LINEUP BOOST
 
             lineup_boost = 1.0
 
             if len(scored) < 4:
                 lineup_boost = 1.10
 
-            # ==========================
             # HR SCORE
-            # ==========================
 
             score = (
                 (hr * 5)
@@ -336,9 +334,7 @@ def get_team_picks(
                 + (recent_hr_form * 2)
             )
 
-            # ==========================
             # BOOSTS
-            # ==========================
 
             score *= weather
             score *= park
@@ -349,9 +345,7 @@ def get_team_picks(
             else:
                 score *= 0.92
 
-            # ==========================
             # LABEL
-            # ==========================
 
             label = classify_pick(
                 slg,
@@ -364,6 +358,8 @@ def get_team_picks(
                 weather,
                 park
             )
+
+            # TAGS
 
             tags = [
                 f"💣 HRs: {hr}",
@@ -547,9 +543,7 @@ def build_message():
             "----------------------\n\n"
         )
 
-    # ==========================
     # PARLAYS
-    # ==========================
 
     parlays = build_parlays(all_plays)
 
@@ -582,20 +576,42 @@ def send_to_discord(message):
 
     try:
 
-        # LIMIT MESSAGE SIZE
+        # SPLIT LARGE MESSAGES
 
-        if len(message) > 1900:
-            message = message[:1900]
+        chunks = []
 
-        response = requests.post(
-            webhook,
-            json={"content": message}
-        )
+        while len(message) > 1900:
 
-        print(
-            f"Discord Status: "
-            f"{response.status_code}"
-        )
+            split_at = message.rfind(
+                "\n",
+                0,
+                1900
+            )
+
+            if split_at == -1:
+                split_at = 1900
+
+            chunks.append(
+                message[:split_at]
+            )
+
+            message = message[split_at:]
+
+        chunks.append(message)
+
+        # SEND CHUNKS
+
+        for chunk in chunks:
+
+            response = requests.post(
+                webhook,
+                json={"content": chunk}
+            )
+
+            print(
+                f"Discord Status: "
+                f"{response.status_code}"
+            )
 
     except Exception as e:
 
