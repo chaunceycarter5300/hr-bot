@@ -197,7 +197,43 @@ def park_boost(venue):
     )
 
 # ==============================
-# REAL HR MODEL
+# CLASSIFY PICKS
+# ==============================
+
+def classify_pick(
+    slg,
+    ops,
+    hr,
+    iso,
+    recent_form,
+    recent_hr_form,
+    pitcher_factor,
+    weather,
+    park
+):
+
+    if (
+        slg >= 0.550
+        and ops >= 0.900
+        and iso >= 0.220
+        and hr >= 10
+    ):
+
+        return "🔥 SAFE PLAY"
+
+    if (
+        recent_hr_form >= 3
+        or pitcher_factor > 0.15
+        or weather > 1
+        or park > 1.1
+    ):
+
+        return "💥 HIGH UPSIDE"
+
+    return "⚠️ LONGSHOT"
+
+# ==============================
+# HR MODEL
 # ==============================
 
 def get_team_picks(
@@ -236,10 +272,6 @@ def get_team_picks(
                 s.get('homeRuns', 0)
             )
 
-            # ==========================
-            # FIXED SLG / OPS
-            # ==========================
-
             slg = float(
                 s.get('slg', 0.400)
             )
@@ -269,36 +301,83 @@ def get_team_picks(
             ) * 10
 
             # ==========================
+            # RECENT HR FORM
+            # ==========================
+
+            recent_hr_form = (
+                hr / games
+            ) * 20
+
+            # ==========================
+            # ISO POWER
+            # ==========================
+
+            iso = slg - avg
+
+            # ==========================
+            # BATTING ORDER BOOST
+            # ==========================
+
+            lineup_boost = 1.0
+
+            if len(scored) < 4:
+                lineup_boost = 1.10
+
+            # ==========================
             # HR SCORE
             # ==========================
 
             score = (
                 (hr * 5)
-                + (slg * 120)
-                + (ops * 90)
-                + (avg * 60)
-                + recent_form
+                + (slg * 140)
+                + (ops * 100)
+                + (iso * 150)
+                + (recent_form * 2)
+                + (recent_hr_form * 2)
             )
 
             # ==========================
-            # ENVIRONMENT BOOSTS
+            # BOOSTS
             # ==========================
 
             score *= weather
             score *= park
+            score *= lineup_boost
 
             if pitcher_factor > 0.15:
                 score *= 1.10
             else:
                 score *= 0.92
 
+            # ==========================
+            # LABEL
+            # ==========================
+
+            label = classify_pick(
+                slg,
+                ops,
+                hr,
+                iso,
+                recent_form,
+                recent_hr_form,
+                pitcher_factor,
+                weather,
+                park
+            )
+
             tags = [
                 f"💣 HRs: {hr}",
                 f"⚾ SLG: {slg}",
                 f"🔥 OPS: {ops}",
                 f"🎯 AVG: {avg}",
-                f"📈 Form Score: {round(recent_form,1)}"
+                f"💥 ISO: {round(iso,3)}",
+                f"📈 Form Score: {round(recent_form,1)}",
+                f"🔥 HR Form: {round(recent_hr_form,1)}",
+                f"🏷️ {label}"
             ]
+
+            if lineup_boost > 1:
+                tags.append("✅ Top Lineup Spot")
 
             if weather > 1:
                 tags.append("✅ Wind Out")
@@ -310,11 +389,13 @@ def get_team_picks(
                 tags.append("✅ Great Park")
 
             scored.append(
-                (
-                    p['name'],
-                    round(score,1),
-                    tags
-                )
+                {
+                    "name": p['name'],
+                    "score": round(score,1),
+                    "tags": tags,
+                    "label": label,
+                    "team_id": team_id
+                }
             )
 
         except Exception as e:
@@ -327,11 +408,68 @@ def get_team_picks(
 
     scored = sorted(
         scored,
-        key=lambda x: x[1],
+        key=lambda x: x['score'],
         reverse=True
     )
 
     return scored[:3]
+
+# ==============================
+# BUILD PARLAYS
+# ==============================
+
+def build_parlays(all_plays):
+
+    safe = [
+        p for p in all_plays
+        if "SAFE PLAY" in p['label']
+    ]
+
+    upside = [
+        p for p in all_plays
+        if "HIGH UPSIDE" in p['label']
+    ]
+
+    longshots = [
+        p for p in all_plays
+        if "LONGSHOT" in p['label']
+    ]
+
+    parlays = []
+
+    # SAFE 2 LEG
+
+    if len(safe) >= 2:
+
+        parlays.append({
+            "title": "🔥 SAFE 2-LEG",
+            "players": safe[:2]
+        })
+
+    # UPSIDE 3 LEG
+
+    combo = []
+
+    combo.extend(safe[:1])
+    combo.extend(upside[:2])
+
+    if len(combo) >= 3:
+
+        parlays.append({
+            "title": "💥 UPSIDE 3-LEG",
+            "players": combo[:3]
+        })
+
+    # LONGSHOT
+
+    if len(longshots) >= 2:
+
+        parlays.append({
+            "title": "⚠️ LONGSHOT PARLAY",
+            "players": longshots[:2]
+        })
+
+    return parlays
 
 # ==============================
 # BUILD MESSAGE
@@ -342,6 +480,8 @@ def build_message():
     games = get_games_today()
 
     msg = "🔥 FINAL HR PICKS 🔥\n\n"
+
+    all_plays = []
 
     for game in games:
 
@@ -369,51 +509,64 @@ def build_message():
             f"🏟️ {away_team} vs {home_team}\n\n"
         )
 
-        # ==========================
         # AWAY TEAM
-        # ==========================
 
-        msg += f"🔥 {away_team} TOP 3 PLAYS\n\n"
+        msg += f"🔥 {away_team} TOP 3\n\n"
 
-        for i, (
-            name,
-            score,
-            tags
-        ) in enumerate(away):
+        for i, p in enumerate(away):
+
+            all_plays.append(p)
 
             msg += (
-                f"{i+1}. 💣 {name}\n"
+                f"{i+1}. 💣 {p['name']}\n"
             )
 
-            for t in tags:
+            for t in p['tags']:
                 msg += f"{t}\n"
 
-            msg += "🎯 BEST PLAY\n\n"
+            msg += "\n"
 
-        # ==========================
         # HOME TEAM
-        # ==========================
 
-        msg += f"🔥 {home_team} TOP 3 PLAYS\n\n"
+        msg += f"🔥 {home_team} TOP 3\n\n"
 
-        for i, (
-            name,
-            score,
-            tags
-        ) in enumerate(home):
+        for i, p in enumerate(home):
+
+            all_plays.append(p)
 
             msg += (
-                f"{i+1}. 💣 {name}\n"
+                f"{i+1}. 💣 {p['name']}\n"
             )
 
-            for t in tags:
+            for t in p['tags']:
                 msg += f"{t}\n"
 
-            msg += "🎯 BEST PLAY\n\n"
+            msg += "\n"
 
         msg += (
             "----------------------\n\n"
         )
+
+    # ==========================
+    # PARLAYS
+    # ==========================
+
+    parlays = build_parlays(all_plays)
+
+    msg += "🔥 BOT PARLAYS 🔥\n\n"
+
+    for parlay in parlays:
+
+        msg += f"{parlay['title']}\n"
+
+        for p in parlay['players']:
+
+            msg += (
+                f"💣 {p['name']} "
+                f"({p['label']})\n"
+            )
+
+        msg += "\n"
 
     return msg
 
@@ -427,34 +580,28 @@ def send_to_discord(message):
         print("❌ NO WEBHOOK FOUND")
         return
 
-    chunks = [
-        message[i:i+1800]
-        for i in range(
-            0,
-            len(message),
-            1800
+    try:
+
+        # LIMIT MESSAGE SIZE
+
+        if len(message) > 1900:
+            message = message[:1900]
+
+        response = requests.post(
+            webhook,
+            json={"content": message}
         )
-    ]
 
-    for chunk in chunks:
+        print(
+            f"Discord Status: "
+            f"{response.status_code}"
+        )
 
-        try:
+    except Exception as e:
 
-            response = requests.post(
-                webhook,
-                json={"content": chunk}
-            )
-
-            print(
-                f"Discord Status: "
-                f"{response.status_code}"
-            )
-
-        except Exception as e:
-
-            print(
-                f"Discord Error: {e}"
-            )
+        print(
+            f"Discord Error: {e}"
+        )
 
 # ==============================
 # START BOT
