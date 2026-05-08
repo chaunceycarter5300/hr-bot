@@ -204,6 +204,7 @@ def park_boost(venue):
 
 # ==============================
 # REAL STATCAST DATA
+# FINAL FIX
 # ==============================
 
 def get_statcast_data(player_id):
@@ -212,7 +213,7 @@ def get_statcast_data(player_id):
 
     try:
 
-        # CACHE DATA ONE TIME
+        # LOAD ONE TIME
 
         if STATCAST_DATA is None:
 
@@ -224,9 +225,9 @@ def get_statcast_data(player_id):
                 )
             )
 
-        data = STATCAST_DATA
+        data = STATCAST_DATA.copy()
 
-        # FIX PLAYER ID TYPES
+        # FIX IDS
 
         data['player_id'] = data[
             'player_id'
@@ -237,12 +238,14 @@ def get_statcast_data(player_id):
             == str(player_id)
         ]
 
+        # PLAYER NOT FOUND
+
         if player.empty:
 
             return {
-                "barrel_pct": 0,
-                "hard_hit_pct": 0,
-                "avg_ev": 0
+                "barrel_pct": 6.0,
+                "hard_hit_pct": 35.0,
+                "avg_ev": 88.0
             }
 
         row = player.iloc[0]
@@ -252,19 +255,16 @@ def get_statcast_data(player_id):
         barrel_pct = float(
             row.get(
                 'brl_percent',
-                0
+                6
             )
         )
 
-        # HARD HIT %
+        # REAL HARD HIT %
 
         hard_hit_pct = float(
             row.get(
-                'hard_hit_percentile',
-                row.get(
-                    'hard_hit_percent',
-                    0
-                )
+                'hard_hit_percent',
+                35
             )
         )
 
@@ -273,9 +273,20 @@ def get_statcast_data(player_id):
         avg_ev = float(
             row.get(
                 'avg_hit_speed',
-                0
+                88
             )
         )
+
+        # SAFETY DEFAULTS
+
+        if hard_hit_pct == 0:
+            hard_hit_pct = 35.0
+
+        if barrel_pct == 0:
+            barrel_pct = 6.0
+
+        if avg_ev == 0:
+            avg_ev = 88.0
 
         return {
             "barrel_pct": barrel_pct,
@@ -290,9 +301,9 @@ def get_statcast_data(player_id):
         )
 
         return {
-            "barrel_pct": 0,
-            "hard_hit_pct": 0,
-            "avg_ev": 0
+            "barrel_pct": 6.0,
+            "hard_hit_pct": 35.0,
+            "avg_ev": 88.0
         }
 
 # ==============================
@@ -414,7 +425,7 @@ def get_team_picks(
             elif iso >= 0.200:
                 split_boost = 1.06
 
-            # SCORE
+            # ADVANCED SCORE
 
             score = (
                 (hr * 5)
