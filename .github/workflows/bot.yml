@@ -25,6 +25,7 @@ jobs:
           pip install requests
           pip install MLB-StatsAPI
           pip install pytz
+          pip install pybaseball
 
       - name: Run bot
         env:
