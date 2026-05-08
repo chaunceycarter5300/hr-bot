@@ -4,6 +4,7 @@ import statsapi
 import pytz
 
 from datetime import datetime
+from pybaseball import statcast_batter_exitvelo_barrels
 
 # ==============================
 # ENV VARIABLES
@@ -68,8 +69,6 @@ def get_lineup(team_id):
                 'abbreviation',
                 ''
             )
-
-            # REMOVE PITCHERS
 
             if pos in ['P', 'TWP']:
                 continue
@@ -198,6 +197,71 @@ def park_boost(venue):
     )
 
 # ==============================
+# REAL STATCAST DATA
+# ==============================
+
+def get_statcast_data(player_id):
+
+    try:
+
+        data = statcast_batter_exitvelo_barrels(
+            2025
+        )
+
+        player = data[
+            data['player_id'] == player_id
+        ]
+
+        if player.empty:
+
+            return {
+                "barrel_pct": 0,
+                "hard_hit_pct": 0,
+                "avg_ev": 0
+            }
+
+        row = player.iloc[0]
+
+        barrel_pct = float(
+            row.get(
+                'brl_percent',
+                0
+            )
+        )
+
+        hard_hit_pct = float(
+            row.get(
+                'hard_hit_percent',
+                0
+            )
+        )
+
+        avg_ev = float(
+            row.get(
+                'avg_hit_speed',
+                0
+            )
+        )
+
+        return {
+            "barrel_pct": barrel_pct,
+            "hard_hit_pct": hard_hit_pct,
+            "avg_ev": avg_ev
+        }
+
+    except Exception as e:
+
+        print(
+            f"Statcast Error: {e}"
+        )
+
+        return {
+            "barrel_pct": 0,
+            "hard_hit_pct": 0,
+            "avg_ev": 0
+        }
+
+# ==============================
 # CLASSIFY PICKS
 # ==============================
 
@@ -299,17 +363,25 @@ def get_team_picks(
             hits = int(s.get('hits', 0))
             games = int(s.get('gamesPlayed', 1))
 
-            # POWER METRICS
-
             iso = slg - avg
 
-            barrel_score = (
-                slg * 100
+            # REAL STATCAST
+
+            statcast = get_statcast_data(
+                p['id']
             )
 
-            hard_hit_score = (
-                ops * 60
-            )
+            barrel_pct = statcast[
+                'barrel_pct'
+            ]
+
+            hard_hit_pct = statcast[
+                'hard_hit_pct'
+            ]
+
+            avg_ev = statcast[
+                'avg_ev'
+            ]
 
             # FORM
 
@@ -347,8 +419,9 @@ def get_team_picks(
                 + (iso * 200)
                 + (recent_form * 2)
                 + (recent_hr_form * 2)
-                + barrel_score
-                + hard_hit_score
+                + (barrel_pct * 6)
+                + (hard_hit_pct * 3)
+                + avg_ev
             )
 
             # PENALTIES
@@ -396,8 +469,9 @@ def get_team_picks(
                 f"🔥 OPS: {ops}",
                 f"🎯 AVG: {avg}",
                 f"💥 ISO: {round(iso,3)}",
-                f"🪵 Barrel Score: {round(barrel_score,1)}",
-                f"💪 Hard Hit: {round(hard_hit_score,1)}",
+                f"🪵 Barrel%: {round(barrel_pct,1)}%",
+                f"💪 HardHit%: {round(hard_hit_pct,1)}%",
+                f"🚀 ExitVelo: {round(avg_ev,1)}",
                 f"📈 Form Score: {round(recent_form,1)}",
                 f"🔥 HR Form: {round(recent_hr_form,1)}",
                 f"🏷️ {label}"
