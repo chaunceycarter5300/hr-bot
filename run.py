@@ -204,7 +204,6 @@ def park_boost(venue):
 
 # ==============================
 # REAL STATCAST DATA
-# FINAL FIX
 # ==============================
 
 def get_statcast_data(player_id):
@@ -244,7 +243,6 @@ def get_statcast_data(player_id):
 
             return {
                 "barrel_pct": 6.0,
-                "hard_hit_pct": 35.0,
                 "avg_ev": 88.0
             }
 
@@ -259,15 +257,6 @@ def get_statcast_data(player_id):
             )
         )
 
-        # REAL HARD HIT %
-
-        hard_hit_pct = float(
-            row.get(
-                'hard_hit_percent',
-                35
-            )
-        )
-
         # EXIT VELO
 
         avg_ev = float(
@@ -279,9 +268,6 @@ def get_statcast_data(player_id):
 
         # SAFETY DEFAULTS
 
-        if hard_hit_pct == 0:
-            hard_hit_pct = 35.0
-
         if barrel_pct == 0:
             barrel_pct = 6.0
 
@@ -290,7 +276,6 @@ def get_statcast_data(player_id):
 
         return {
             "barrel_pct": barrel_pct,
-            "hard_hit_pct": hard_hit_pct,
             "avg_ev": avg_ev
         }
 
@@ -302,7 +287,6 @@ def get_statcast_data(player_id):
 
         return {
             "barrel_pct": 6.0,
-            "hard_hit_pct": 35.0,
             "avg_ev": 88.0
         }
 
@@ -397,10 +381,6 @@ def get_team_picks(
                 'barrel_pct'
             ]
 
-            hard_hit_pct = statcast[
-                'hard_hit_pct'
-            ]
-
             avg_ev = statcast[
                 'avg_ev'
             ]
@@ -435,7 +415,6 @@ def get_team_picks(
                 + (recent_form * 2)
                 + (recent_hr_form * 2)
                 + (barrel_pct * 6)
-                + (hard_hit_pct * 3)
                 + avg_ev
             )
 
@@ -477,23 +456,16 @@ def get_team_picks(
 
             tags = [
                 f"💣 HRs: {hr}",
+                f"💥 ISO: {round(iso,3)}",
                 f"⚾ SLG: {slg}",
                 f"🔥 OPS: {ops}",
-                f"🎯 AVG: {avg}",
-                f"💥 ISO: {round(iso,3)}",
                 f"🪵 Barrel%: {round(barrel_pct,1)}%",
-                f"💪 HardHit%: {round(hard_hit_pct,1)}%",
                 f"🚀 ExitVelo: {round(avg_ev,1)}",
-                f"📈 Form Score: {round(recent_form,1)}",
-                f"🔥 HR Form: {round(recent_hr_form,1)}",
                 f"🏷️ {label}"
             ]
 
             if barrel_pct >= 12:
                 tags.append("✅ Elite Barrel")
-
-            if hard_hit_pct >= 45:
-                tags.append("✅ Elite Hard Hit")
 
             if split_boost > 1:
                 tags.append("✅ Strong Power Split")
@@ -539,14 +511,24 @@ def build_message():
 
     msg = "🔥 HR TARGET BOARD 🔥\n\n"
 
-    all_plays = []
-
     for game in games:
 
         venue = game.get(
             'venue_name',
             ''
         )
+
+        away_team = game.get(
+            'away_name',
+            'Away Team'
+        )
+
+        home_team = game.get(
+            'home_name',
+            'Home Team'
+        )
+
+        # GET PICKS
 
         away = get_team_picks(
             game['away_id'],
@@ -560,23 +542,61 @@ def build_message():
             venue
         )
 
-        all_plays.extend(away)
-        all_plays.extend(home)
+        # AWAY TEAM
 
-    all_plays = sorted(
-        all_plays,
-        key=lambda x: x['score'],
-        reverse=True
-    )
+        msg += (
+            f"🔥 {away_team} 🔥\n\n"
+        )
 
-    for p in all_plays:
+        for i, p in enumerate(away):
 
-        msg += f"💣 {p['name']}\n"
+            medal = "🥇"
 
-        for t in p['tags']:
-            msg += f"{t}\n"
+            if i == 1:
+                medal = "🥈"
 
-        msg += "\n--------------------------------\n\n"
+            elif i == 2:
+                medal = "🥉"
+
+            msg += (
+                f"{medal} {p['name']}\n"
+            )
+
+            for t in p['tags']:
+
+                msg += f"{t}\n"
+
+            msg += (
+                "\n---------------------\n\n"
+            )
+
+        # HOME TEAM
+
+        msg += (
+            f"🔥 {home_team} 🔥\n\n"
+        )
+
+        for i, p in enumerate(home):
+
+            medal = "🥇"
+
+            if i == 1:
+                medal = "🥈"
+
+            elif i == 2:
+                medal = "🥉"
+
+            msg += (
+                f"{medal} {p['name']}\n"
+            )
+
+            for t in p['tags']:
+
+                msg += f"{t}\n"
+
+            msg += (
+                "\n---------------------\n\n"
+            )
 
     return msg
 
