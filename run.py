@@ -70,6 +70,7 @@ def get_lineup(team_id):
             )
 
             # REMOVE PITCHERS
+
             if pos in ['P', 'TWP']:
                 continue
 
@@ -177,10 +178,12 @@ def weather_boost(venue):
         )
 
         # WIND OUT
+
         if 90 <= wind_deg <= 270:
             return 1 + (wind_speed / 35)
 
         # WIND IN
+
         return 1 - (wind_speed / 70)
 
     except:
@@ -411,23 +414,74 @@ def get_team_picks(
     return scored[:3]
 
 # ==============================
-# BUILD PARLAYS
+# GREEN FLAGS
+# ==============================
+
+def get_green_flags(tags):
+
+    green_flags = 0
+
+    for t in tags:
+
+        if (
+            "SAFE PLAY" in t
+            or "Wind Out" in t
+            or "Weak Pitcher" in t
+            or "Great Park" in t
+            or "Top Lineup Spot" in t
+        ):
+
+            green_flags += 1
+
+    return green_flags
+
+# ==============================
+# SMART PARLAYS
 # ==============================
 
 def build_parlays(all_plays):
 
+    filtered = []
+
+    for p in all_plays:
+
+        flags = get_green_flags(
+            p['tags']
+        )
+
+        # REMOVE WEAK PLAYS
+
+        if (
+            p['score'] >= 180
+            and flags >= 2
+        ):
+
+            p['flags'] = flags
+            filtered.append(p)
+
+    # SORT BEST PLAYS
+
+    filtered = sorted(
+        filtered,
+        key=lambda x: (
+            x['flags'],
+            x['score']
+        ),
+        reverse=True
+    )
+
     safe = [
-        p for p in all_plays
+        p for p in filtered
         if "SAFE PLAY" in p['label']
     ]
 
     upside = [
-        p for p in all_plays
+        p for p in filtered
         if "HIGH UPSIDE" in p['label']
     ]
 
     longshots = [
-        p for p in all_plays
+        p for p in filtered
         if "LONGSHOT" in p['label']
     ]
 
@@ -438,30 +492,54 @@ def build_parlays(all_plays):
     if len(safe) >= 2:
 
         parlays.append({
-            "title": "🔥 SAFE 2-LEG",
-            "players": safe[:2]
+            "title": "🔥 BEST SAFE 2-LEG",
+            "players": [
+                safe[0],
+                safe[1]
+            ]
         })
 
-    # UPSIDE 3 LEG
+    # SMART UPSIDE 3 LEG
 
-    combo = []
+    upside_combo = []
 
-    combo.extend(safe[:1])
-    combo.extend(upside[:2])
+    if len(safe) >= 1:
 
-    if len(combo) >= 3:
+        upside_combo.append(
+            safe[0]
+        )
+
+    for p in upside:
+
+        # AVOID SAME TEAM STACKS
+
+        if len(upside_combo) == 0:
+
+            upside_combo.append(p)
+
+        elif all(
+            p['team_id'] != x['team_id']
+            for x in upside_combo
+        ):
+
+            upside_combo.append(p)
+
+        if len(upside_combo) == 3:
+            break
+
+    if len(upside_combo) == 3:
 
         parlays.append({
-            "title": "💥 UPSIDE 3-LEG",
-            "players": combo[:3]
+            "title": "💥 BEST UPSIDE 3-LEG",
+            "players": upside_combo
         })
 
-    # LONGSHOT
+    # LOTTO LONGSHOT
 
     if len(longshots) >= 2:
 
         parlays.append({
-            "title": "⚠️ LONGSHOT PARLAY",
+            "title": "⚠️ LOTTO HR PARLAY",
             "players": longshots[:2]
         })
 
