@@ -177,12 +177,8 @@ def weather_boost(venue):
             180
         )
 
-        # WIND OUT
-
         if 90 <= wind_deg <= 270:
             return 1 + (wind_speed / 35)
-
-        # WIND IN
 
         return 1 - (wind_speed / 70)
 
@@ -217,8 +213,6 @@ def classify_pick(
     park
 ):
 
-    # SAFE PLAY
-
     if (
         slg >= 0.550
         and ops >= 0.900
@@ -227,8 +221,6 @@ def classify_pick(
     ):
 
         return "🔥 SAFE PLAY"
-
-    # HIGH UPSIDE
 
     if (
         recent_hr_form >= 3
@@ -239,12 +231,33 @@ def classify_pick(
 
         return "💥 HIGH UPSIDE"
 
-    # LONGSHOT
-
     return "⚠️ LONGSHOT"
 
 # ==============================
-# HR MODEL
+# GREEN FLAGS
+# ==============================
+
+def get_green_flags(tags):
+
+    green_flags = 0
+
+    for t in tags:
+
+        if (
+            "SAFE PLAY" in t
+            or "Wind Out" in t
+            or "Weak Pitcher" in t
+            or "Great Park" in t
+            or "Top Lineup Spot" in t
+            or "Strong Power Split" in t
+        ):
+
+            green_flags += 1
+
+    return green_flags
+
+# ==============================
+# ADVANCED HR MODEL
 # ==============================
 
 def get_team_picks(
@@ -279,45 +292,44 @@ def get_team_picks(
 
             s = stats['stats'][0]['stats']
 
-            hr = int(
-                s.get('homeRuns', 0)
+            hr = int(s.get('homeRuns', 0))
+            slg = float(s.get('slg', 0.400))
+            ops = float(s.get('ops', 0.700))
+            avg = float(s.get('avg', 0.250))
+            hits = int(s.get('hits', 0))
+            games = int(s.get('gamesPlayed', 1))
+
+            # POWER METRICS
+
+            iso = slg - avg
+
+            barrel_score = (
+                slg * 100
             )
 
-            slg = float(
-                s.get('slg', 0.400)
+            hard_hit_score = (
+                ops * 60
             )
 
-            ops = float(
-                s.get('ops', 0.700)
-            )
-
-            avg = float(
-                s.get('avg', 0.250)
-            )
-
-            hits = int(
-                s.get('hits', 0)
-            )
-
-            games = int(
-                s.get('gamesPlayed', 1)
-            )
-
-            # RECENT FORM
+            # FORM
 
             recent_form = (
                 hits / games
             ) * 10
 
-            # RECENT HR FORM
-
             recent_hr_form = (
                 hr / games
             ) * 20
 
-            # ISO POWER
+            # SPLIT BOOST
 
-            iso = slg - avg
+            split_boost = 1.0
+
+            if iso >= 0.250:
+                split_boost = 1.12
+
+            elif iso >= 0.200:
+                split_boost = 1.06
 
             # LINEUP BOOST
 
@@ -326,38 +338,41 @@ def get_team_picks(
             if len(scored) < 4:
                 lineup_boost = 1.10
 
-            # BASE SCORE
+            # SCORE
 
             score = (
                 (hr * 5)
-                + (slg * 140)
-                + (ops * 100)
-                + (iso * 150)
+                + (slg * 160)
+                + (ops * 120)
+                + (iso * 200)
                 + (recent_form * 2)
                 + (recent_hr_form * 2)
+                + barrel_score
+                + hard_hit_score
             )
 
             # PENALTIES
 
-            if ops < 0.700:
-                score *= 0.75
+            if ops < 0.720:
+                score *= 0.72
 
-            if slg < 0.420:
-                score *= 0.80
+            if slg < 0.430:
+                score *= 0.78
 
             if iso < 0.170:
-                score *= 0.85
+                score *= 0.82
 
             # BOOSTS
 
             score *= weather
             score *= park
             score *= lineup_boost
+            score *= split_boost
 
             if pitcher_factor > 0.15:
                 score *= 1.10
             else:
-                score *= 0.92
+                score *= 0.90
 
             # LABEL
 
@@ -381,10 +396,15 @@ def get_team_picks(
                 f"🔥 OPS: {ops}",
                 f"🎯 AVG: {avg}",
                 f"💥 ISO: {round(iso,3)}",
+                f"🪵 Barrel Score: {round(barrel_score,1)}",
+                f"💪 Hard Hit: {round(hard_hit_score,1)}",
                 f"📈 Form Score: {round(recent_form,1)}",
                 f"🔥 HR Form: {round(recent_hr_form,1)}",
                 f"🏷️ {label}"
             ]
+
+            if split_boost > 1:
+                tags.append("✅ Strong Power Split")
 
             if lineup_boost > 1:
                 tags.append("✅ Top Lineup Spot")
@@ -410,9 +430,7 @@ def get_team_picks(
 
         except Exception as e:
 
-            print(
-                f"Player Error: {e}"
-            )
+            print(f"Player Error: {e}")
 
             continue
 
@@ -425,29 +443,7 @@ def get_team_picks(
     return scored[:3]
 
 # ==============================
-# GREEN FLAGS
-# ==============================
-
-def get_green_flags(tags):
-
-    green_flags = 0
-
-    for t in tags:
-
-        if (
-            "SAFE PLAY" in t
-            or "Wind Out" in t
-            or "Weak Pitcher" in t
-            or "Great Park" in t
-            or "Top Lineup Spot" in t
-        ):
-
-            green_flags += 1
-
-    return green_flags
-
-# ==============================
-# SMART PARLAYS
+# ULTRA SELECTIVE PARLAYS
 # ==============================
 
 def build_parlays(all_plays):
@@ -460,17 +456,14 @@ def build_parlays(all_plays):
             p['tags']
         )
 
-        # FILTER WEAKER PLAYS
-
         if (
-            p['score'] >= 180
-            and flags >= 2
+            p['score'] >= 260
+            and flags >= 3
+            and "LONGSHOT" not in p['label']
         ):
 
             p['flags'] = flags
             filtered.append(p)
-
-    # SORT BEST
 
     filtered = sorted(
         filtered,
@@ -491,67 +484,40 @@ def build_parlays(all_plays):
         if "HIGH UPSIDE" in p['label']
     ]
 
-    longshots = [
-        p for p in filtered
-        if "LONGSHOT" in p['label']
-    ]
-
     parlays = []
-
-    # SAFE 2 LEG
 
     if len(safe) >= 2:
 
         parlays.append({
-            "title": "🔥 BEST SAFE 2-LEG",
+            "title": "🔥 ELITE HR 2-LEG",
             "players": [
                 safe[0],
                 safe[1]
             ]
         })
 
-    # UPSIDE 3 LEG
-
-    upside_combo = []
+    combo = []
 
     if len(safe) >= 1:
-
-        upside_combo.append(
-            safe[0]
-        )
+        combo.append(safe[0])
 
     for p in upside:
 
-        # AVOID SAME TEAM STACKS
-
-        if len(upside_combo) == 0:
-
-            upside_combo.append(p)
-
-        elif all(
+        if all(
             p['team_id'] != x['team_id']
-            for x in upside_combo
+            for x in combo
         ):
 
-            upside_combo.append(p)
+            combo.append(p)
 
-        if len(upside_combo) == 3:
+        if len(combo) == 3:
             break
 
-    if len(upside_combo) == 3:
+    if len(combo) == 3:
 
         parlays.append({
-            "title": "💥 BEST UPSIDE 3-LEG",
-            "players": upside_combo
-        })
-
-    # LONGSHOT PARLAY
-
-    if len(longshots) >= 2:
-
-        parlays.append({
-            "title": "⚠️ LOTTO HR PARLAY",
-            "players": longshots[:2]
+            "title": "💥 ULTRA UPSIDE 3-LEG",
+            "players": combo
         })
 
     return parlays
@@ -571,8 +537,6 @@ def build_message():
     risky_plays = []
 
     all_plays = []
-
-    # COLLECT ALL PLAYS
 
     for game in games:
 
@@ -596,8 +560,6 @@ def build_message():
         all_plays.extend(away)
         all_plays.extend(home)
 
-    # SORT TIERS
-
     for p in all_plays:
 
         if (
@@ -617,8 +579,6 @@ def build_message():
         else:
 
             risky_plays.append(p)
-
-    # SORT BEST FIRST
 
     elite_plays = sorted(
         elite_plays,
@@ -730,8 +690,6 @@ def send_to_discord(message):
             message = message[split_at:]
 
         chunks.append(message)
-
-        # SEND ALL CHUNKS
 
         for chunk in chunks:
 
