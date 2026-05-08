@@ -212,8 +212,6 @@ def get_statcast_data(player_id):
 
     try:
 
-        # LOAD ONE TIME
-
         if STATCAST_DATA is None:
 
             print("Loading Statcast Data...")
@@ -226,8 +224,6 @@ def get_statcast_data(player_id):
 
         data = STATCAST_DATA.copy()
 
-        # FIX IDS
-
         data['player_id'] = data[
             'player_id'
         ].astype(str)
@@ -236,8 +232,6 @@ def get_statcast_data(player_id):
             data['player_id']
             == str(player_id)
         ]
-
-        # PLAYER NOT FOUND
 
         if player.empty:
 
@@ -248,8 +242,6 @@ def get_statcast_data(player_id):
 
         row = player.iloc[0]
 
-        # BARREL %
-
         barrel_pct = float(
             row.get(
                 'brl_percent',
@@ -257,16 +249,12 @@ def get_statcast_data(player_id):
             )
         )
 
-        # EXIT VELO
-
         avg_ev = float(
             row.get(
                 'avg_hit_speed',
                 88
             )
         )
-
-        # SAFETY DEFAULTS
 
         if barrel_pct == 0:
             barrel_pct = 6.0
@@ -299,7 +287,6 @@ def classify_pick(
     ops,
     hr,
     iso,
-    recent_form,
     recent_hr_form,
     pitcher_factor,
     weather,
@@ -327,13 +314,14 @@ def classify_pick(
     return "⚠️ LONGSHOT"
 
 # ==============================
-# ADVANCED HR MODEL
+# TEAM PICKS
 # ==============================
 
 def get_team_picks(
     team_id,
     opponent_id,
-    venue
+    venue,
+    team_name
 ):
 
     hitters = get_lineup(team_id)
@@ -366,12 +354,8 @@ def get_team_picks(
             slg = float(s.get('slg', 0.400))
             ops = float(s.get('ops', 0.700))
             avg = float(s.get('avg', 0.250))
-            hits = int(s.get('hits', 0))
-            games = int(s.get('gamesPlayed', 1))
 
             iso = slg - avg
-
-            # REAL STATCAST
 
             statcast = get_statcast_data(
                 p['id']
@@ -385,74 +369,39 @@ def get_team_picks(
                 'avg_ev'
             ]
 
-            # FORM
-
-            recent_form = (
-                hits / games
-            ) * 10
-
             recent_hr_form = (
-                hr / games
+                hr / max(
+                    int(s.get('gamesPlayed', 1)),
+                    1
+                )
             ) * 20
-
-            # SPLIT BOOST
-
-            split_boost = 1.0
-
-            if iso >= 0.250:
-                split_boost = 1.12
-
-            elif iso >= 0.200:
-                split_boost = 1.06
-
-            # ADVANCED SCORE
 
             score = (
                 (hr * 5)
                 + (slg * 160)
                 + (ops * 120)
                 + (iso * 200)
-                + (recent_form * 2)
                 + (recent_hr_form * 2)
                 + (barrel_pct * 6)
                 + avg_ev
             )
 
-            # PENALTIES
-
-            if ops < 0.720:
-                score *= 0.72
-
-            if slg < 0.430:
-                score *= 0.78
-
-            if iso < 0.170:
-                score *= 0.82
-
-            # BOOSTS
-
             score *= weather
             score *= park
-            score *= split_boost
 
             if pitcher_factor > 0.15:
                 score *= 1.10
-
-            # LABEL
 
             label = classify_pick(
                 slg,
                 ops,
                 hr,
                 iso,
-                recent_form,
                 recent_hr_form,
                 pitcher_factor,
                 weather,
                 park
             )
-
-            # TAGS
 
             tags = [
                 f"💣 HRs: {hr}",
@@ -467,9 +416,6 @@ def get_team_picks(
             if barrel_pct >= 12:
                 tags.append("✅ Elite Barrel")
 
-            if split_boost > 1:
-                tags.append("✅ Strong Power Split")
-
             if weather > 1:
                 tags.append("✅ Wind Out")
 
@@ -483,7 +429,8 @@ def get_team_picks(
                 {
                     "name": p['name'],
                     "score": round(score,1),
-                    "tags": tags
+                    "tags": tags,
+                    "team": team_name
                 }
             )
 
@@ -502,6 +449,162 @@ def get_team_picks(
     return scored[:3]
 
 # ==============================
+# SMART PARLAYS
+# ==============================
+
+def build_parlays(all_plays):
+
+    elite = []
+    upside = []
+
+    for p in all_plays:
+
+        barrel = 0
+        ev = 0
+        iso = 0
+        slg = 0
+        ops = 0
+
+        for t in p['tags']:
+
+            if "Barrel%" in t:
+                barrel = float(
+                    t.split(": ")[1]
+                    .replace("%","")
+                )
+
+            if "ExitVelo" in t:
+                ev = float(
+                    t.split(": ")[1]
+                )
+
+            if "ISO" in t:
+                iso = float(
+                    t.split(": ")[1]
+                )
+
+            if "SLG" in t:
+                slg = float(
+                    t.split(": ")[1]
+                )
+
+            if "OPS" in t:
+                ops = float(
+                    t.split(": ")[1]
+                )
+
+        # STRICT FILTERS
+
+        if barrel < 8:
+            continue
+
+        if iso < 0.180:
+            continue
+
+        if slg < 0.450:
+            continue
+
+        if ops < 0.760:
+            continue
+
+        if ev < 89:
+            continue
+
+        # ELITE
+
+        if (
+            barrel >= 12
+            and iso >= 0.220
+            and slg >= 0.550
+            and ops >= 0.850
+            and ev >= 91
+        ):
+
+            elite.append(p)
+
+        else:
+
+            upside.append(p)
+
+    elite = sorted(
+        elite,
+        key=lambda x: x['score'],
+        reverse=True
+    )
+
+    upside = sorted(
+        upside,
+        key=lambda x: x['score'],
+        reverse=True
+    )
+
+    parlays = []
+
+    # SAFEST 2 LEG
+
+    if len(elite) >= 2:
+
+        first = elite[0]
+
+        second = None
+
+        for p in elite[1:]:
+
+            if (
+                p['team']
+                != first['team']
+            ):
+
+                second = p
+                break
+
+        if second:
+
+            parlays.append({
+                "title": "🔥 SAFEST HR 2-LEG",
+                "players": [
+                    first,
+                    second
+                ]
+            })
+
+    # BEST 3 LEG
+
+    combo = []
+
+    if len(elite) >= 1:
+        combo.append(elite[0])
+
+    for p in upside:
+
+        same_team = False
+
+        for c in combo:
+
+            if (
+                c['team']
+                == p['team']
+            ):
+
+                same_team = True
+
+        if not same_team:
+
+            combo.append(p)
+
+        if len(combo) == 3:
+            break
+
+    if len(combo) == 3:
+
+        parlays.append({
+            "title": "💥 BEST UPSIDE 3-LEG",
+            "players": combo
+        })
+
+    return parlays
+
+# ==============================
 # BUILD MESSAGE
 # ==============================
 
@@ -510,6 +613,8 @@ def build_message():
     games = get_games_today()
 
     msg = "🔥 HR TARGET BOARD 🔥\n\n"
+
+    all_plays = []
 
     for game in games:
 
@@ -528,25 +633,26 @@ def build_message():
             'Home Team'
         )
 
-        # GET PICKS
-
         away = get_team_picks(
             game['away_id'],
             game['home_id'],
-            venue
+            venue,
+            away_team
         )
 
         home = get_team_picks(
             game['home_id'],
             game['away_id'],
-            venue
+            venue,
+            home_team
         )
+
+        all_plays.extend(away)
+        all_plays.extend(home)
 
         # AWAY TEAM
 
-        msg += (
-            f"🔥 {away_team} 🔥\n\n"
-        )
+        msg += f"🔥 {away_team} 🔥\n\n"
 
         for i, p in enumerate(away):
 
@@ -558,23 +664,16 @@ def build_message():
             elif i == 2:
                 medal = "🥉"
 
-            msg += (
-                f"{medal} {p['name']}\n"
-            )
+            msg += f"{medal} {p['name']}\n"
 
             for t in p['tags']:
-
                 msg += f"{t}\n"
 
-            msg += (
-                "\n---------------------\n\n"
-            )
+            msg += "\n---------------------\n\n"
 
         # HOME TEAM
 
-        msg += (
-            f"🔥 {home_team} 🔥\n\n"
-        )
+        msg += f"🔥 {home_team} 🔥\n\n"
 
         for i, p in enumerate(home):
 
@@ -586,17 +685,30 @@ def build_message():
             elif i == 2:
                 medal = "🥉"
 
-            msg += (
-                f"{medal} {p['name']}\n"
-            )
+            msg += f"{medal} {p['name']}\n"
 
             for t in p['tags']:
-
                 msg += f"{t}\n"
 
-            msg += (
-                "\n---------------------\n\n"
-            )
+            msg += "\n---------------------\n\n"
+
+    # PARLAYS
+
+    parlays = build_parlays(
+        all_plays
+    )
+
+    msg += "🔥 BEST HR PARLAYS 🔥\n\n"
+
+    for parlay in parlays:
+
+        msg += f"{parlay['title']}\n\n"
+
+        for p in parlay['players']:
+
+            msg += f"💣 {p['name']}\n"
+
+        msg += "\n---------------------\n\n"
 
     return msg
 
