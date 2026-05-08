@@ -326,7 +326,7 @@ def get_team_picks(
             if len(scored) < 4:
                 lineup_boost = 1.10
 
-            # HR SCORE
+            # BASE SCORE
 
             score = (
                 (hr * 5)
@@ -336,6 +336,17 @@ def get_team_picks(
                 + (recent_form * 2)
                 + (recent_hr_form * 2)
             )
+
+            # PENALTIES
+
+            if ops < 0.700:
+                score *= 0.75
+
+            if slg < 0.420:
+                score *= 0.80
+
+            if iso < 0.170:
+                score *= 0.85
 
             # BOOSTS
 
@@ -449,7 +460,7 @@ def build_parlays(all_plays):
             p['tags']
         )
 
-        # REMOVE WEAK PLAYS
+        # FILTER WEAKER PLAYS
 
         if (
             p['score'] >= 180
@@ -459,7 +470,7 @@ def build_parlays(all_plays):
             p['flags'] = flags
             filtered.append(p)
 
-    # SORT BEST PLAYS
+    # SORT BEST
 
     filtered = sorted(
         filtered,
@@ -499,7 +510,7 @@ def build_parlays(all_plays):
             ]
         })
 
-    # SMART UPSIDE 3 LEG
+    # UPSIDE 3 LEG
 
     upside_combo = []
 
@@ -534,7 +545,7 @@ def build_parlays(all_plays):
             "players": upside_combo
         })
 
-    # LOTTO LONGSHOT
+    # LONGSHOT PARLAY
 
     if len(longshots) >= 2:
 
@@ -553,14 +564,17 @@ def build_message():
 
     games = get_games_today()
 
-    msg = "🔥 FINAL HR PICKS 🔥\n\n"
+    msg = "🔥 HR TARGET BOARD 🔥\n\n"
+
+    elite_plays = []
+    upside_plays = []
+    risky_plays = []
 
     all_plays = []
 
-    for game in games:
+    # COLLECT ALL PLAYS
 
-        away_team = game['away_name']
-        home_team = game['home_name']
+    for game in games:
 
         venue = game.get(
             'venue_name',
@@ -579,53 +593,95 @@ def build_message():
             venue
         )
 
-        msg += (
-            f"🏟️ {away_team} vs {home_team}\n\n"
-        )
+        all_plays.extend(away)
+        all_plays.extend(home)
 
-        # AWAY TEAM
+    # SORT TIERS
 
-        msg += f"🔥 {away_team} TOP 3\n\n"
+    for p in all_plays:
 
-        for i, p in enumerate(away):
+        if (
+            "SAFE PLAY" in p['label']
+            and p['score'] >= 220
+        ):
 
-            all_plays.append(p)
+            elite_plays.append(p)
 
-            msg += (
-                f"{i+1}. 💣 {p['name']}\n"
-            )
+        elif (
+            "HIGH UPSIDE" in p['label']
+            and p['score'] >= 180
+        ):
 
-            for t in p['tags']:
-                msg += f"{t}\n"
+            upside_plays.append(p)
 
-            msg += "\n"
+        else:
 
-        # HOME TEAM
+            risky_plays.append(p)
 
-        msg += f"🔥 {home_team} TOP 3\n\n"
+    # SORT BEST FIRST
 
-        for i, p in enumerate(home):
+    elite_plays = sorted(
+        elite_plays,
+        key=lambda x: x['score'],
+        reverse=True
+    )
 
-            all_plays.append(p)
+    upside_plays = sorted(
+        upside_plays,
+        key=lambda x: x['score'],
+        reverse=True
+    )
 
-            msg += (
-                f"{i+1}. 💣 {p['name']}\n"
-            )
+    risky_plays = sorted(
+        risky_plays,
+        key=lambda x: x['score'],
+        reverse=True
+    )
 
-            for t in p['tags']:
-                msg += f"{t}\n"
+    # ELITE
 
-            msg += "\n"
+    msg += "🔥 ELITE HR TARGETS 🔥\n\n"
 
-        msg += (
-            "----------------------\n\n"
-        )
+    for p in elite_plays[:10]:
+
+        msg += f"💣 {p['name']}\n"
+
+        for t in p['tags']:
+            msg += f"{t}\n"
+
+        msg += "\n--------------------------------\n\n"
+
+    # UPSIDE
+
+    msg += "💥 UPSIDE HR TARGETS 💥\n\n"
+
+    for p in upside_plays[:10]:
+
+        msg += f"💣 {p['name']}\n"
+
+        for t in p['tags']:
+            msg += f"{t}\n"
+
+        msg += "\n--------------------------------\n\n"
+
+    # RISKY
+
+    msg += "⚠️ RISKY HR TARGETS ⚠️\n\n"
+
+    for p in risky_plays[:6]:
+
+        msg += f"💣 {p['name']}\n"
+
+        for t in p['tags']:
+            msg += f"{t}\n"
+
+        msg += "\n--------------------------------\n\n"
 
     # PARLAYS
 
     parlays = build_parlays(all_plays)
 
-    msg += "🔥 BOT PARLAYS 🔥\n\n"
+    msg += "🔥 BEST HR PARLAYS 🔥\n\n"
 
     for parlay in parlays:
 
@@ -638,7 +694,7 @@ def build_message():
                 f"({p['label']})\n"
             )
 
-        msg += "\n"
+        msg += "\n--------------------------------\n\n"
 
     return msg
 
@@ -653,8 +709,6 @@ def send_to_discord(message):
         return
 
     try:
-
-        # SPLIT LARGE MESSAGES
 
         chunks = []
 
@@ -677,7 +731,7 @@ def send_to_discord(message):
 
         chunks.append(message)
 
-        # SEND CHUNKS
+        # SEND ALL CHUNKS
 
         for chunk in chunks:
 
