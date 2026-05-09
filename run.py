@@ -114,7 +114,11 @@ def get_pitcher(team_id):
 
         return None
 
-def get_pitcher_factor(pitcher_id):
+# ==============================
+# DAILY PITCHER MATCHUP
+# ==============================
+
+def get_pitcher_matchup_boost(pitcher_id):
 
     try:
 
@@ -127,23 +131,119 @@ def get_pitcher_factor(pitcher_id):
         s = stats['stats'][0]['stats']
 
         hr_allowed = int(
-            s.get('homeRuns', 1)
+            s.get('homeRuns', 0)
         )
 
         innings = float(
-            s.get('inningsPitched', 1)
+            s.get(
+                'inningsPitched',
+                1
+            )
         )
 
-        factor = (
-            hr_allowed / innings
-            if innings > 0 else 1.0
+        whip = float(
+            s.get(
+                'whip',
+                1.20
+            )
         )
 
-        return factor
+        era = float(
+            s.get(
+                'era',
+                4.00
+            )
+        )
+
+        hr9 = (
+            (hr_allowed * 9)
+            / innings
+            if innings > 0 else 1
+        )
+
+        boost = 1.0
+
+        if hr9 >= 1.5:
+            boost += 0.18
+
+        elif hr9 >= 1.2:
+            boost += 0.10
+
+        if era >= 4.50:
+            boost += 0.08
+
+        if whip >= 1.35:
+            boost += 0.05
+
+        return boost
 
     except:
 
         return 1.0
+
+# ==============================
+# RECENT FORM
+# ==============================
+
+def get_recent_form(player_id):
+
+    try:
+
+        logs = statsapi.player_stat_data(
+            player_id,
+            group="[hitting]",
+            type="gameLog"
+        )
+
+        games = logs.get(
+            'stats',
+            []
+        )
+
+        if not games:
+
+            return {
+                "recent_hr": 0,
+                "recent_hits": 0
+            }
+
+        recent = games[:7]
+
+        hr = 0
+        hits = 0
+
+        for g in recent:
+
+            s = g.get(
+                'stats',
+                {}
+            )
+
+            hr += int(
+                s.get(
+                    'homeRuns',
+                    0
+                )
+            )
+
+            hits += int(
+                s.get(
+                    'hits',
+                    0
+                )
+            )
+
+        return {
+            "recent_hr": hr,
+            "recent_hits": hits
+        }
+
+    except:
+
+        return {
+            "recent_hr": 0,
+            "recent_hits": 0
+        }
 
 # ==============================
 # WEATHER
@@ -201,6 +301,26 @@ def park_boost(venue):
         venue,
         1.0
     )
+
+# ==============================
+# LINEUP BOOST
+# ==============================
+
+def get_lineup_boost(index):
+
+    if index == 0:
+        return 1.15
+
+    if index == 1:
+        return 1.12
+
+    if index == 2:
+        return 1.10
+
+    if index == 3:
+        return 1.08
+
+    return 1.0
 
 # ==============================
 # REAL STATCAST DATA
@@ -283,31 +403,23 @@ def get_statcast_data(player_id):
 # ==============================
 
 def classify_pick(
-    slg,
-    ops,
-    hr,
+    barrel_pct,
     iso,
-    recent_hr_form,
-    pitcher_factor,
-    weather,
-    park
+    ops,
+    recent_hr,
+    avg_ev
 ):
 
     if (
-        slg >= 0.550
-        and ops >= 0.900
+        barrel_pct >= 12
         and iso >= 0.220
-        and hr >= 10
+        and ops >= 0.850
+        and avg_ev >= 91
     ):
 
         return "🔥 SAFE PLAY"
 
-    if (
-        recent_hr_form >= 3
-        or pitcher_factor > 0.15
-        or weather > 1
-        or park > 1.1
-    ):
+    if recent_hr >= 3:
 
         return "💥 HIGH UPSIDE"
 
@@ -328,8 +440,10 @@ def get_team_picks(
 
     pitcher_id = get_pitcher(opponent_id)
 
-    pitcher_factor = (
-        get_pitcher_factor(pitcher_id)
+    pitcher_boost = (
+        get_pitcher_matchup_boost(
+            pitcher_id
+        )
         if pitcher_id else 1.0
     )
 
@@ -338,7 +452,7 @@ def get_team_picks(
 
     scored = []
 
-    for p in hitters:
+    for idx, p in enumerate(hitters):
 
         try:
 
@@ -369,38 +483,52 @@ def get_team_picks(
                 'avg_ev'
             ]
 
-            recent_hr_form = (
-                hr / max(
-                    int(s.get('gamesPlayed', 1)),
-                    1
-                )
-            ) * 20
+            # RECENT FORM
+
+            recent = get_recent_form(
+                p['id']
+            )
+
+            recent_hr = recent[
+                'recent_hr'
+            ]
+
+            recent_hits = recent[
+                'recent_hits'
+            ]
+
+            # LINEUP BOOST
+
+            lineup_boost = (
+                get_lineup_boost(idx)
+            )
+
+            # DAILY HR SCORE
 
             score = (
-                (hr * 5)
-                + (slg * 160)
-                + (ops * 120)
-                + (iso * 200)
-                + (recent_hr_form * 2)
-                + (barrel_pct * 6)
-                + avg_ev
+                (hr * 4)
+                + (slg * 140)
+                + (ops * 110)
+                + (iso * 220)
+                + (recent_hr * 18)
+                + (recent_hits * 2)
+                + (barrel_pct * 8)
+                + (avg_ev * 1.5)
             )
+
+            # BOOSTS
 
             score *= weather
             score *= park
-
-            if pitcher_factor > 0.15:
-                score *= 1.10
+            score *= pitcher_boost
+            score *= lineup_boost
 
             label = classify_pick(
-                slg,
-                ops,
-                hr,
+                barrel_pct,
                 iso,
-                recent_hr_form,
-                pitcher_factor,
-                weather,
-                park
+                ops,
+                recent_hr,
+                avg_ev
             )
 
             tags = [
@@ -410,17 +538,25 @@ def get_team_picks(
                 f"🔥 OPS: {ops}",
                 f"🪵 Barrel%: {round(barrel_pct,1)}%",
                 f"🚀 ExitVelo: {round(avg_ev,1)}",
+                f"🔥 Last7HR: {recent_hr}",
+                f"⚾ Last7Hits: {recent_hits}",
                 f"🏷️ {label}"
             ]
 
             if barrel_pct >= 12:
                 tags.append("✅ Elite Barrel")
 
+            if recent_hr >= 3:
+                tags.append("✅ HOT HR FORM")
+
+            if pitcher_boost >= 1.15:
+                tags.append("✅ HR TARGET PITCHER")
+
+            if lineup_boost >= 1.10:
+                tags.append("✅ TOP LINEUP")
+
             if weather > 1:
                 tags.append("✅ Wind Out")
-
-            if pitcher_factor > 0.15:
-                tags.append("✅ Weak Pitcher")
 
             if park > 1.1:
                 tags.append("✅ Great Park")
@@ -462,7 +598,6 @@ def build_parlays(all_plays):
         barrel = 0
         ev = 0
         iso = 0
-        slg = 0
         ops = 0
 
         for t in p['tags']:
@@ -483,11 +618,6 @@ def build_parlays(all_plays):
                     t.split(": ")[1]
                 )
 
-            if "SLG" in t:
-                slg = float(
-                    t.split(": ")[1]
-                )
-
             if "OPS" in t:
                 ops = float(
                     t.split(": ")[1]
@@ -501,9 +631,6 @@ def build_parlays(all_plays):
         if iso < 0.180:
             continue
 
-        if slg < 0.450:
-            continue
-
         if ops < 0.760:
             continue
 
@@ -515,7 +642,6 @@ def build_parlays(all_plays):
         if (
             barrel >= 12
             and iso >= 0.220
-            and slg >= 0.550
             and ops >= 0.850
             and ev >= 91
         ):
@@ -568,7 +694,7 @@ def build_parlays(all_plays):
                 ]
             })
 
-    # BEST 3 LEG
+    # UPSIDE 3 LEG
 
     combo = []
 
@@ -612,7 +738,7 @@ def build_message():
 
     games = get_games_today()
 
-    msg = "🔥 HR TARGET BOARD 🔥\n\n"
+    msg = "🔥 DAILY HR SPOTS 🔥\n\n"
 
     all_plays = []
 
@@ -771,7 +897,7 @@ if __name__ == "__main__":
 
     try:
 
-        print("🔥 STARTING BOT")
+        print("🔥 STARTING DAILY HR BOT")
 
         msg = build_message()
 
