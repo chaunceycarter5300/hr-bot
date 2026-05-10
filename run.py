@@ -5,7 +5,6 @@ import statsapi
 import pandas as pd
 import numpy as np
 
-from pybaseball import statcast_batter
 from datetime import datetime
 
 # ==============================
@@ -238,71 +237,6 @@ def get_pitcher_stats(team_id):
         }
 
 # ==============================
-# STATCAST POWER
-# ==============================
-
-def get_statcast_power(player_id):
-
-    try:
-
-        data = statcast_batter(
-
-            start_dt='2026-04-01',
-            end_dt='2026-12-31',
-            player_id=player_id
-
-        )
-
-        if data.empty:
-
-            return {
-
-                "barrel": 0,
-                "launch_speed": 0
-
-            }
-
-        # BARRELS
-
-        barrels = len(
-
-            data[
-                data['launch_speed'] >= 98
-            ]
-
-        )
-
-        barrel_rate = (
-            barrels / len(data)
-        ) * 100
-
-        # EXIT VELO
-
-        avg_ev = (
-            data['launch_speed']
-            .mean()
-        )
-
-        return {
-
-            "barrel":
-            round(barrel_rate, 1),
-
-            "launch_speed":
-            round(avg_ev, 1)
-
-        }
-
-    except:
-
-        return {
-
-            "barrel": 0,
-            "launch_speed": 0
-
-        }
-
-# ==============================
 # LIVE TEAM HITTERS
 # ==============================
 
@@ -370,34 +304,14 @@ def get_team_hitters(team_id):
                 )
 
                 # ======================
-                # STATCAST
-                # ======================
-
-                power = get_statcast_power(
-                    player_id
-                )
-
-                barrel = power['barrel']
-
-                ev = power['launch_speed']
-
-                # ======================
                 # HR SCORE
                 # ======================
 
                 score = 0
 
-                score += hr * 1.5
-                score += slg * 12
-                score += ops * 8
-
-                # BARREL %
-
-                score += barrel * 2.2
-
-                # EXIT VELO
-
-                score += ev * 0.35
+                score += hr * 1.8
+                score += slg * 14
+                score += ops * 10
 
                 hitters.append({
 
@@ -436,7 +350,7 @@ def calculate_hr_probability(
 
     # HITTER SCORE
 
-    score += hitter_score / 8
+    score += hitter_score / 10
 
     # HR/9
 
@@ -687,7 +601,7 @@ def build_message():
     board = get_board()
 
     msg = (
-        "🔥 MOST LIKELY HR BY TEAM 🔥\n\n"
+        "🔥 MOST LIKELY HR BY TEAM 🔥\\n\\n"
     )
 
     for i, g in enumerate(board):
@@ -708,21 +622,21 @@ def build_message():
 
         msg += (
             f"{medal} "
-            f"{g['team']}\n\n"
+            f"{g['team']}\\n\\n"
         )
 
         msg += (
             f"💣 "
-            f"{g['player']} HR\n"
+            f"{g['player']} HR\\n"
         )
 
         msg += (
             f"📊 HR Confidence: "
-            f"{g['prob']}%\n"
+            f"{g['prob']}%\\n"
         )
 
         msg += (
-            "\n----------------------\n\n"
+            "\\n----------------------\\n\\n"
         )
 
     return msg
@@ -736,7 +650,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING ADVANCED HR ENGINE"
+            "🔥 STARTING OPTIMIZED HR ENGINE"
         )
 
         msg = build_message()
