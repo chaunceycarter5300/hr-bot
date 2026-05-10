@@ -2,8 +2,6 @@ import os
 import requests
 import pytz
 import statsapi
-import pandas as pd
-import numpy as np
 
 from datetime import datetime
 
@@ -29,8 +27,6 @@ def send_to_discord(message):
 
     try:
 
-        # DISCORD LIMIT
-
         if len(message) > 1900:
 
             message = message[:1900]
@@ -44,8 +40,6 @@ def send_to_discord(message):
             }
 
         )
-
-        # SUCCESS
 
         if response.status_code in [200, 204]:
 
@@ -95,13 +89,17 @@ def get_weather_boost(city):
 
         boost = 0
 
+        # HOT WEATHER
+
         if temp >= 80:
 
-            boost += 2
+            boost += 3
+
+        # WIND
 
         if wind >= 10:
 
-            boost += 2
+            boost += 3
 
         return boost
 
@@ -125,10 +123,7 @@ def get_team_strength(team_name):
 
                 for team in division['teams']:
 
-                    if (
-                        team['name']
-                        == team_name
-                    ):
+                    if team['name'] == team_name:
 
                         wins = int(
                             team.get('w', 0)
@@ -192,34 +187,33 @@ def get_pitcher_stats(team_id):
 
         s = stats['stats'][0]['stats']
 
-        era = float(
-            s.get('era', 4.00)
-        )
-
-        whip = float(
-            s.get('whip', 1.30)
-        )
-
-        k9 = float(
-            s.get(
-                'strikeoutsPer9Inn',
-                8.0
-            )
-        )
-
-        hr9 = float(
-            s.get(
-                'homeRunsPer9',
-                1.1
-            )
-        )
-
         return {
 
-            "era": era,
-            "whip": whip,
-            "k9": k9,
-            "hr9": hr9
+            "era":
+            float(
+                s.get('era', 4.00)
+            ),
+
+            "whip":
+            float(
+                s.get('whip', 1.30)
+            ),
+
+            "k9":
+            float(
+                s.get(
+                    'strikeoutsPer9Inn',
+                    8.0
+                )
+            ),
+
+            "hr9":
+            float(
+                s.get(
+                    'homeRunsPer9',
+                    1.1
+                )
+            )
 
         }
 
@@ -281,43 +275,70 @@ def get_team_hitters(team_id):
                 s = stats['stats'][0]['stats']
 
                 hr = int(
-                    s.get(
-                        'homeRuns',
-                        0
-                    )
+                    s.get('homeRuns', 0)
                 )
 
                 slg = float(
-                    s.get(
-                        'slg',
-                        0.350
-                    )
+                    s.get('slg', 0.350)
                 )
 
                 ops = float(
-                    s.get(
-                        'ops',
-                        0.650
-                    )
+                    s.get('ops', 0.650)
                 )
 
-                # SKIP WEAK HITTERS
+                avg = float(
+                    s.get('avg', 0.220)
+                )
 
-                if hr < 3:
+                # SKIP NON POWER
+
+                if hr < 2:
 
                     continue
 
-                if ops < 0.650:
-
-                    continue
-
+                # ======================
                 # HR SCORE
+                # ======================
 
                 score = 0
 
-                score += hr * 1.8
-                score += slg * 14
-                score += ops * 10
+                # POWER
+
+                score += hr * 2.5
+
+                # OPS
+
+                score += ops * 12
+
+                # SLUGGING
+
+                score += slg * 18
+
+                # AVG
+
+                score += avg * 8
+
+                # ELITE HR BOOST
+
+                if hr >= 10:
+
+                    score += 8
+
+                if hr >= 20:
+
+                    score += 12
+
+                # ELITE OPS BOOST
+
+                if ops >= .900:
+
+                    score += 8
+
+                # ELITE SLG BOOST
+
+                if slg >= .500:
+
+                    score += 8
 
                 hitters.append({
 
@@ -325,7 +346,10 @@ def get_team_hitters(team_id):
                     player_name,
 
                     "score":
-                    score
+                    score,
+
+                    "hr":
+                    hr
 
                 })
 
@@ -345,7 +369,7 @@ def get_team_hitters(team_id):
 
 def calculate_hr_probability(
 
-    hitter_score,
+    hitter,
     pitcher,
     team_strength,
     weather_boost
@@ -354,7 +378,21 @@ def calculate_hr_probability(
 
     score = 10
 
-    score += hitter_score / 10
+    # BASE HITTER SCORE
+
+    score += hitter['score'] / 10
+
+    # ELITE HR BAT
+
+    if hitter['hr'] >= 15:
+
+        score += 6
+
+    elif hitter['hr'] >= 10:
+
+        score += 4
+
+    # HR/9
 
     if pitcher['hr9'] >= 1.6:
 
@@ -364,6 +402,8 @@ def calculate_hr_probability(
 
         score += 6
 
+    # ERA
+
     if pitcher['era'] >= 5:
 
         score += 5
@@ -372,9 +412,13 @@ def calculate_hr_probability(
 
         score += 3
 
+    # WHIP
+
     if pitcher['whip'] >= 1.40:
 
         score += 4
+
+    # K9
 
     if pitcher['k9'] <= 7:
 
@@ -384,6 +428,8 @@ def calculate_hr_probability(
 
         score -= 3
 
+    # TEAM STRENGTH
+
     if team_strength >= 0.600:
 
         score += 5
@@ -392,14 +438,16 @@ def calculate_hr_probability(
 
         score -= 3
 
+    # WEATHER
+
     score += weather_boost
 
     return int(
 
         max(
-            12,
+            15,
             min(
-                40,
+                45,
                 score
             )
         )
@@ -430,7 +478,7 @@ def get_best_hr_hitter(
 
         prob = calculate_hr_probability(
 
-            hitter['score'],
+            hitter,
             pitcher,
             strength,
             weather_boost
@@ -503,6 +551,8 @@ def get_board():
                 away_id
             )
 
+            # HOME
+
             home_hitters = get_team_hitters(
                 home_id
             )
@@ -530,6 +580,8 @@ def get_board():
                     best_home['prob']
 
                 })
+
+            # AWAY
 
             away_hitters = get_team_hitters(
                 away_id
@@ -632,7 +684,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING OPTIMIZED HR ENGINE"
+            "🔥 STARTING ADVANCED HR ENGINE"
         )
 
         msg = build_message()
