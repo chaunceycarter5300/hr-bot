@@ -153,23 +153,121 @@ def get_pitcher_stats(team_id):
         }
 
 # ==============================
-# HR MODEL
+# DYNAMIC LINEUPS
 # ==============================
 
-def calculate_hr_confidence(
+team_hitters = {
+
+    "Arizona Diamondbacks":
+    ["Ketel Marte", "Christian Walker"],
+
+    "Atlanta Braves":
+    ["Matt Olson", "Austin Riley"],
+
+    "Baltimore Orioles":
+    ["Gunnar Henderson", "Adley Rutschman"],
+
+    "Boston Red Sox":
+    ["Rafael Devers", "Triston Casas"],
+
+    "Chicago Cubs":
+    ["Seiya Suzuki", "Ian Happ"],
+
+    "Chicago White Sox":
+    ["Luis Robert Jr", "Andrew Vaughn"],
+
+    "Cincinnati Reds":
+    ["Elly De La Cruz", "Spencer Steer"],
+
+    "Cleveland Guardians":
+    ["Jose Ramirez", "Josh Naylor"],
+
+    "Colorado Rockies":
+    ["Ryan McMahon", "Ezequiel Tovar"],
+
+    "Detroit Tigers":
+    ["Riley Greene", "Spencer Torkelson"],
+
+    "Houston Astros":
+    ["Yordan Alvarez", "Jose Altuve"],
+
+    "Kansas City Royals":
+    ["Bobby Witt Jr", "Salvador Perez"],
+
+    "Los Angeles Angels":
+    ["Mike Trout", "Taylor Ward"],
+
+    "Los Angeles Dodgers":
+    ["Shohei Ohtani", "Mookie Betts"],
+
+    "Miami Marlins":
+    ["Jake Burger", "Josh Bell"],
+
+    "Milwaukee Brewers":
+    ["Christian Yelich", "Rhys Hoskins"],
+
+    "Minnesota Twins":
+    ["Byron Buxton", "Carlos Correa"],
+
+    "New York Mets":
+    ["Pete Alonso", "Juan Soto"],
+
+    "New York Yankees":
+    ["Aaron Judge", "Giancarlo Stanton"],
+
+    "Oakland Athletics":
+    ["Brent Rooker", "Shea Langeliers"],
+
+    "Philadelphia Phillies":
+    ["Kyle Schwarber", "Bryce Harper"],
+
+    "Pittsburgh Pirates":
+    ["Oneil Cruz", "Bryan Reynolds"],
+
+    "San Diego Padres":
+    ["Fernando Tatis Jr", "Manny Machado"],
+
+    "San Francisco Giants":
+    ["Matt Chapman", "Jung Hoo Lee"],
+
+    "Seattle Mariners":
+    ["Julio Rodriguez", "Cal Raleigh"],
+
+    "St. Louis Cardinals":
+    ["Nolan Arenado", "Paul Goldschmidt"],
+
+    "Tampa Bay Rays":
+    ["Yandy Diaz", "Isaac Paredes"],
+
+    "Texas Rangers":
+    ["Corey Seager", "Adolis Garcia"],
+
+    "Toronto Blue Jays":
+    ["Vladimir Guerrero Jr", "Bo Bichette"],
+
+    "Washington Nationals":
+    ["James Wood", "CJ Abrams"]
+
+}
+
+# ==============================
+# HR CONFIDENCE
+# ==============================
+
+def calculate_hr_probability(
     pitcher,
     team_strength
 ):
 
-    score = 14
+    score = 16
 
     # HR/9
 
-    if pitcher['hr9'] >= 1.5:
+    if pitcher['hr9'] >= 1.6:
 
         score += 10
 
-    elif pitcher['hr9'] >= 1.2:
+    elif pitcher['hr9'] >= 1.3:
 
         score += 6
 
@@ -177,7 +275,7 @@ def calculate_hr_confidence(
 
     if pitcher['era'] >= 5:
 
-        score += 6
+        score += 5
 
     elif pitcher['era'] >= 4:
 
@@ -187,7 +285,7 @@ def calculate_hr_confidence(
 
     if pitcher['whip'] >= 1.40:
 
-        score += 5
+        score += 4
 
     # K9
 
@@ -216,63 +314,6 @@ def calculate_hr_confidence(
             score
         )
     )
-
-# ==============================
-# PROJECT RUNS
-# ==============================
-
-def project_runs(
-    team_strength,
-    opposing_pitcher
-):
-
-    runs = 4.3
-
-    if team_strength >= 0.600:
-
-        runs += 1.0
-
-    elif team_strength <= 0.450:
-
-        runs -= 0.8
-
-    if opposing_pitcher['era'] >= 5:
-
-        runs += 1.4
-
-    elif opposing_pitcher['era'] >= 4:
-
-        runs += 0.7
-
-    elif opposing_pitcher['era'] <= 3:
-
-        runs -= 0.8
-
-    return round(runs, 1)
-
-# ==============================
-# FAKE PLAYER POOL
-# REPLACE WITH REAL PLAYERS LATER
-# ==============================
-
-team_hr_players = {
-
-    "New York Yankees":
-    ["Aaron Judge"],
-
-    "Los Angeles Dodgers":
-    ["Shohei Ohtani"],
-
-    "Philadelphia Phillies":
-    ["Kyle Schwarber"],
-
-    "Atlanta Braves":
-    ["Matt Olson"],
-
-    "New York Mets":
-    ["Pete Alonso"]
-
-}
 
 # ==============================
 # BUILD BOARD
@@ -325,150 +366,70 @@ def get_board():
             )
 
             # ======================
-            # PROJECTED RUNS
+            # HOME HR PLAYER
             # ======================
 
-            home_runs = project_runs(
-                home_strength,
-                away_pitch
-            )
+            if home in team_hitters:
 
-            away_runs = project_runs(
-                away_strength,
-                home_pitch
-            )
-
-            # ======================
-            # WINNER
-            # ======================
-
-            if home_runs > away_runs:
-
-                ml_team = home
-                edge = (
-                    home_runs - away_runs
+                home_hr = random.choice(
+                    team_hitters[home]
                 )
 
-            else:
-
-                ml_team = away
-                edge = (
-                    away_runs - home_runs
-                )
-
-            ml_confidence = int(
-                54 + (edge * 4)
-            )
-
-            ml_confidence = max(
-                54,
-                min(
-                    74,
-                    ml_confidence
-                )
-            )
-
-            # ======================
-            # HR PLAYER
-            # ======================
-
-            hr_team = ml_team
-
-            if hr_team in team_hr_players:
-
-                hr_player = random.choice(
-                    team_hr_players[hr_team]
-                )
-
-            else:
-
-                continue
-
-            # ======================
-            # HR CONFIDENCE
-            # ======================
-
-            if hr_team == home:
-
-                hr_confidence = (
-                    calculate_hr_confidence(
+                home_hr_conf = (
+                    calculate_hr_probability(
                         away_pitch,
                         home_strength
                     )
                 )
 
-            else:
+                board.append({
 
-                hr_confidence = (
-                    calculate_hr_confidence(
+                    "player":
+                    home_hr,
+
+                    "team":
+                    home,
+
+                    "matchup":
+                    f"{away} vs {home}",
+
+                    "prob":
+                    home_hr_conf
+
+                })
+
+            # ======================
+            # AWAY HR PLAYER
+            # ======================
+
+            if away in team_hitters:
+
+                away_hr = random.choice(
+                    team_hitters[away]
+                )
+
+                away_hr_conf = (
+                    calculate_hr_probability(
                         home_pitch,
                         away_strength
                     )
                 )
 
-            # ======================
-            # TOTALS
-            # ======================
+                board.append({
 
-            total_runs = round(
-                home_runs + away_runs,
-                1
-            )
+                    "player":
+                    away_hr,
 
-            total_runs = max(
-                6.5,
-                min(
-                    14.5,
-                    total_runs
-                )
-            )
+                    "team":
+                    away,
 
-            projected_total = round(
-                total_runs * 2
-            ) / 2
+                    "matchup":
+                    f"{away} vs {home}",
 
-            if projected_total >= 10:
+                    "prob":
+                    away_hr_conf
 
-                total_bet = (
-                    f"OVER {projected_total - 0.5}"
-                )
-
-            elif projected_total <= 7:
-
-                total_bet = (
-                    f"UNDER {projected_total + 0.5}"
-                )
-
-            else:
-
-                total_bet = (
-                    f"OVER {projected_total - 0.5}"
-                )
-
-            board.append({
-
-                "matchup":
-                f"{away} vs {home}",
-
-                "ml_team":
-                ml_team,
-
-                "ml_confidence":
-                ml_confidence,
-
-                "hr_player":
-                hr_player,
-
-                "hr_confidence":
-                hr_confidence,
-
-                "total_runs":
-                total_runs,
-
-                "total_bet":
-                total_bet
-
-            })
+                })
 
         except Exception as e:
 
@@ -478,9 +439,9 @@ def get_board():
 
     return sorted(
         board,
-        key=lambda x: x['hr_confidence'],
+        key=lambda x: x['prob'],
         reverse=True
-    )[:5]
+    )[:10]
 
 # ==============================
 # BUILD MESSAGE
@@ -491,7 +452,7 @@ def build_message():
     board = get_board()
 
     msg = (
-        "🔥 ELITE HR + ML BOARD 🔥\n\n"
+        "🔥 MOST LIKELY HR TODAY 🔥\n\n"
     )
 
     for i, g in enumerate(board):
@@ -509,41 +470,22 @@ def build_message():
 
         msg += (
             f"{medal} "
-            f"{g['matchup']}\n\n"
+            f"{g['player']} HR\n\n"
         )
 
         msg += (
-            f"💣 HR PROP:\n"
+            f"⚾ Team: "
+            f"{g['team']}\n"
         )
 
         msg += (
-            f"{g['hr_player']} HR\n"
+            f"⚾ Matchup: "
+            f"{g['matchup']}\n"
         )
 
         msg += (
             f"📊 HR Confidence: "
-            f"{g['hr_confidence']}%\n\n"
-        )
-
-        msg += (
-            f"⚾ MONEYLINE:\n"
-        )
-
-        msg += (
-            f"{g['ml_team']} ML\n"
-        )
-
-        msg += (
-            f"📊 ML Confidence: "
-            f"{g['ml_confidence']}%\n\n"
-        )
-
-        msg += (
-            f"🔥 Total Bet:\n"
-        )
-
-        msg += (
-            f"{g['total_bet']}\n"
+            f"{g['prob']}%\n"
         )
 
         msg += (
@@ -561,7 +503,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING HR + ML MODEL"
+            "🔥 STARTING DYNAMIC HR MODEL"
         )
 
         msg = build_message()
