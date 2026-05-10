@@ -1,6 +1,5 @@
 requests
 pytz
 MLB-StatsAPI
-pybaseball
 pandas
 numpy
