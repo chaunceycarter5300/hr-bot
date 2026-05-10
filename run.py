@@ -123,7 +123,10 @@ def get_team_strength(team_name):
 
                 for team in division['teams']:
 
-                    if team['name'] == team_name:
+                    if (
+                        team['name']
+                        == team_name
+                    ):
 
                         wins = int(
                             team.get('w', 0)
@@ -290,51 +293,53 @@ def get_team_hitters(team_id):
                     s.get('avg', 0.220)
                 )
 
-                # SKIP NON POWER
+                # SKIP VERY WEAK BATS
 
-                if hr < 2:
+                if hr < 3:
 
                     continue
 
                 # ======================
-                # HR SCORE
+                # BALANCED HR SCORE
                 # ======================
 
                 score = 0
 
-                # POWER
+                # HR POWER
 
-                score += hr * 2.5
+                score += hr * 3
 
                 # OPS
 
-                score += ops * 12
+                score += ops * 10
 
                 # SLUGGING
 
-                score += slg * 18
+                score += slg * 15
 
                 # AVG
 
-                score += avg * 8
+                score += avg * 5
 
-                # ELITE HR BOOST
+                # ======================
+                # ELITE POWER BOOSTS
+                # ======================
 
-                if hr >= 10:
+                if hr >= 15:
 
-                    score += 8
+                    score += 10
 
-                if hr >= 20:
+                elif hr >= 10:
 
-                    score += 12
+                    score += 6
 
-                # ELITE OPS BOOST
+                # ELITE OPS
 
                 if ops >= .900:
 
                     score += 8
 
-                # ELITE SLG BOOST
+                # ELITE SLG
 
                 if slg >= .500:
 
@@ -349,7 +354,13 @@ def get_team_hitters(team_id):
                     score,
 
                     "hr":
-                    hr
+                    hr,
+
+                    "ops":
+                    ops,
+
+                    "slg":
+                    slg
 
                 })
 
@@ -382,13 +393,25 @@ def calculate_hr_probability(
 
     score += hitter['score'] / 10
 
-    # ELITE HR BAT
+    # TRUE ELITE HR BAT
 
-    if hitter['hr'] >= 15:
+    if hitter['hr'] >= 20:
 
-        score += 6
+        score += 8
 
-    elif hitter['hr'] >= 10:
+    elif hitter['hr'] >= 15:
+
+        score += 5
+
+    # ELITE OPS
+
+    if hitter['ops'] >= .950:
+
+        score += 4
+
+    # ELITE SLG
+
+    if hitter['slg'] >= .550:
 
         score += 4
 
@@ -418,7 +441,7 @@ def calculate_hr_probability(
 
         score += 4
 
-    # K9
+    # LOW K PITCHER
 
     if pitcher['k9'] <= 7:
 
@@ -684,7 +707,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING ADVANCED HR ENGINE"
+            "🔥 STARTING BALANCED HR ENGINE"
         )
 
         msg = build_message()
