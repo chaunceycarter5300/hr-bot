@@ -155,19 +155,17 @@ def project_team_runs(
     opposing_pitcher
 ):
 
-    runs = 4.2
+    runs = 4.5
 
-    # BAD PITCHER
+    # ERA
 
     if opposing_pitcher['era'] >= 5:
 
-        runs += 1.4
+        runs += 2.0
 
     elif opposing_pitcher['era'] >= 4:
 
-        runs += 0.7
-
-    # GOOD PITCHER
+        runs += 1.0
 
     elif opposing_pitcher['era'] <= 3:
 
@@ -177,11 +175,11 @@ def project_team_runs(
 
     if opposing_pitcher['whip'] >= 1.40:
 
-        runs += 0.8
+        runs += 1.0
 
     elif opposing_pitcher['whip'] <= 1.10:
 
-        runs -= 0.5
+        runs -= 0.7
 
     # K9
 
@@ -191,22 +189,22 @@ def project_team_runs(
 
     elif opposing_pitcher['k9'] <= 7:
 
-        runs += 0.4
+        runs += 0.5
 
     # TEAM FORM
 
     if offense_form >= 0.600:
 
-        runs += 0.6
+        runs += 0.8
 
     elif offense_form <= 0.450:
 
-        runs -= 0.5
+        runs -= 0.7
 
     return round(runs, 1)
 
 # ==============================
-# MLB PICKS
+# MLB BOARD
 # ==============================
 
 def get_mlb_board():
@@ -232,7 +230,7 @@ def get_mlb_board():
             home_id = game['home_id']
 
             # ======================
-            # TEAM FORM
+            # FORM
             # ======================
 
             home_form = get_team_form(
@@ -256,7 +254,7 @@ def get_mlb_board():
             )
 
             # ======================
-            # PROJECTED RUNS
+            # PROJECT RUNS
             # ======================
 
             home_runs = project_team_runs(
@@ -274,14 +272,23 @@ def get_mlb_board():
                 1
             )
 
+            # FORCE REALISTIC RANGE
+
+            total_runs = max(
+                6.5,
+                min(
+                    14.5,
+                    total_runs
+                )
+            )
+
             # ======================
-            # MONEYLINE EDGE
+            # MONEYLINE
             # ======================
 
             if home_runs > away_runs:
 
                 ml_team = home
-
                 edge = (
                     home_runs - away_runs
                 )
@@ -289,17 +296,16 @@ def get_mlb_board():
             else:
 
                 ml_team = away
-
                 edge = (
                     away_runs - home_runs
                 )
 
             confidence = int(
-                58 + (edge * 6)
+                60 + (edge * 6)
             )
 
             confidence = max(
-                58,
+                60,
                 min(
                     80,
                     confidence
@@ -307,10 +313,26 @@ def get_mlb_board():
             )
 
             # ======================
+            # F5
+            # ======================
+
+            if (
+                home_pitch['era']
+                <
+                away_pitch['era']
+            ):
+
+                f5_team = home
+
+            else:
+
+                f5_team = away
+
+            # ======================
             # TOTAL BET
             # ======================
 
-            if total_runs >= 9.5:
+            if total_runs >= 10:
 
                 total_bet = (
                     f"OVER {total_runs}"
@@ -325,7 +347,7 @@ def get_mlb_board():
             else:
 
                 total_bet = (
-                    f"LEAN OVER {total_runs}"
+                    f"OVER {total_runs}"
                 )
 
             board.append({
@@ -335,6 +357,9 @@ def get_mlb_board():
 
                 "ml_team":
                 ml_team,
+
+                "f5_team":
+                f5_team,
 
                 "confidence":
                 confidence,
@@ -396,7 +421,7 @@ def build_message():
         )
 
         # ======================
-        # MONEYLINE
+        # ML
         # ======================
 
         msg += (
@@ -410,11 +435,20 @@ def build_message():
         )
 
         # ======================
-        # PROJECTED RUNS
+        # F5
         # ======================
 
         msg += (
-            f"🏟️ Projected Score:\n"
+            f"⚾ F5 ML: "
+            f"{g['f5_team']}\n\n"
+        )
+
+        # ======================
+        # SCORE
+        # ======================
+
+        msg += (
+            f"🏟️ Projected Score\n"
         )
 
         msg += (
@@ -422,23 +456,20 @@ def build_message():
         )
 
         msg += (
-            f"Away: {g['away_runs']}\n"
+            f"Away: {g['away_runs']}\n\n"
         )
+
+        # ======================
+        # TOTAL
+        # ======================
 
         msg += (
             f"🔥 Total Runs: "
-            f"{g['total_runs']}\n\n"
-        )
-
-        # ======================
-        # TOTAL BET
-        # ======================
-
-        msg += (
-            f"🔥 Recommended Total:\n"
+            f"{g['total_runs']}\n"
         )
 
         msg += (
+            f"🔥 Bet: "
             f"{g['total_bet']}\n"
         )
 
