@@ -147,10 +147,69 @@ def get_pitcher_stats(team_id):
         }
 
 # ==============================
+# PROJECT RUNS
+# ==============================
+
+def project_team_runs(
+    offense_form,
+    opposing_pitcher
+):
+
+    runs = 4.2
+
+    # BAD PITCHER
+
+    if opposing_pitcher['era'] >= 5:
+
+        runs += 1.4
+
+    elif opposing_pitcher['era'] >= 4:
+
+        runs += 0.7
+
+    # GOOD PITCHER
+
+    elif opposing_pitcher['era'] <= 3:
+
+        runs -= 1.0
+
+    # WHIP
+
+    if opposing_pitcher['whip'] >= 1.40:
+
+        runs += 0.8
+
+    elif opposing_pitcher['whip'] <= 1.10:
+
+        runs -= 0.5
+
+    # K9
+
+    if opposing_pitcher['k9'] >= 10:
+
+        runs -= 0.5
+
+    elif opposing_pitcher['k9'] <= 7:
+
+        runs += 0.4
+
+    # TEAM FORM
+
+    if offense_form >= 0.600:
+
+        runs += 0.6
+
+    elif offense_form <= 0.450:
+
+        runs -= 0.5
+
+    return round(runs, 1)
+
+# ==============================
 # MLB PICKS
 # ==============================
 
-def get_mlb_picks():
+def get_mlb_board():
 
     today = datetime.now(
         pytz.timezone("US/Eastern")
@@ -160,10 +219,7 @@ def get_mlb_picks():
         date=today
     )
 
-    moneylines = []
-    f5_picks = []
-    totals = []
-    team_totals = []
+    board = []
 
     for game in games:
 
@@ -172,12 +228,12 @@ def get_mlb_picks():
             away = game['away_name']
             home = game['home_name']
 
-            home_id = game['home_id']
             away_id = game['away_id']
+            home_id = game['home_id']
 
-            # =========================
-            # FORM
-            # =========================
+            # ======================
+            # TEAM FORM
+            # ======================
 
             home_form = get_team_form(
                 home
@@ -187,9 +243,9 @@ def get_mlb_picks():
                 away
             )
 
-            # =========================
+            # ======================
             # PITCHERS
-            # =========================
+            # ======================
 
             home_pitch = get_pitcher_stats(
                 home_id
@@ -199,261 +255,103 @@ def get_mlb_picks():
                 away_id
             )
 
-            # =========================
-            # MONEYLINE
-            # =========================
+            # ======================
+            # PROJECTED RUNS
+            # ======================
 
-            ml_score = 50
-            ml_reasons = []
-
-            ml_score += 5
-
-            ml_reasons.append(
-                "✅ Home Field"
+            home_runs = project_team_runs(
+                home_form,
+                away_pitch
             )
 
-            if home_form > away_form:
+            away_runs = project_team_runs(
+                away_form,
+                home_pitch
+            )
 
-                ml_score += 10
+            total_runs = round(
+                home_runs + away_runs,
+                1
+            )
 
-                ml_reasons.append(
-                    "🔥 Better Team Form"
+            # ======================
+            # MONEYLINE EDGE
+            # ======================
+
+            if home_runs > away_runs:
+
+                ml_team = home
+
+                edge = (
+                    home_runs - away_runs
                 )
 
-            if (
-                home_pitch['era']
-                < away_pitch['era']
-            ):
+            else:
 
-                ml_score += 12
+                ml_team = away
 
-                ml_reasons.append(
-                    "🔥 Better Starting Pitcher"
+                edge = (
+                    away_runs - home_runs
                 )
 
-            if (
-                home_pitch['whip']
-                < away_pitch['whip']
-            ):
+            confidence = int(
+                58 + (edge * 6)
+            )
 
-                ml_score += 5
-
-                ml_reasons.append(
-                    "🔥 Better WHIP"
-                )
-
-            ml_prob = max(
-                50,
+            confidence = max(
+                58,
                 min(
-                    85,
-                    ml_score
+                    80,
+                    confidence
                 )
             )
 
-            if ml_prob >= 60:
+            # ======================
+            # TOTAL BET
+            # ======================
 
-                moneylines.append({
+            if total_runs >= 9.5:
 
-                    "team": home,
-                    "prob": ml_prob,
-                    "reasons": ml_reasons
-
-                })
-
-            # =========================
-            # FIRST 5
-            # =========================
-
-            f5_score = 50
-            f5_reasons = []
-
-            if (
-                home_pitch['era']
-                < away_pitch['era']
-            ):
-
-                f5_score += 15
-
-                f5_reasons.append(
-                    "🔥 Elite Pitching Edge"
+                total_bet = (
+                    f"OVER {total_runs}"
                 )
 
-            if (
-                home_pitch['whip']
-                < away_pitch['whip']
-            ):
+            elif total_runs <= 7.5:
 
-                f5_score += 10
-
-                f5_reasons.append(
-                    "🔥 Better WHIP"
+                total_bet = (
+                    f"UNDER {total_runs}"
                 )
 
-            if (
-                home_pitch['k9']
-                > away_pitch['k9']
-            ):
+            else:
 
-                f5_score += 8
-
-                f5_reasons.append(
-                    "🔥 Better K/9"
+                total_bet = (
+                    f"LEAN OVER {total_runs}"
                 )
 
-            if f5_score >= 65:
+            board.append({
 
-                f5_picks.append({
+                "matchup":
+                f"{away} vs {home}",
 
-                    "team": home,
-                    "prob": f5_score,
-                    "reasons": f5_reasons
+                "ml_team":
+                ml_team,
 
-                })
+                "confidence":
+                confidence,
 
-            # =========================
-            # TOTALS
-            # =========================
+                "home_runs":
+                home_runs,
 
-            combined_era = (
-                home_pitch['era']
-                +
-                away_pitch['era']
-            )
+                "away_runs":
+                away_runs,
 
-            combined_k9 = (
-                home_pitch['k9']
-                +
-                away_pitch['k9']
-            )
+                "total_runs":
+                total_runs,
 
-            over_score = 50
-            over_reasons = []
+                "total_bet":
+                total_bet
 
-            if combined_era >= 8:
-
-                over_score += 15
-
-                over_reasons.append(
-                    "🔥 Weak Pitching Matchup"
-                )
-
-            if combined_k9 <= 15:
-
-                over_score += 10
-
-                over_reasons.append(
-                    "🔥 Low Strikeout Pitchers"
-                )
-
-            if over_score >= 65:
-
-                totals.append({
-
-                    "matchup":
-                    f"{away} vs {home}",
-
-                    "bet":
-                    "OVER 9",
-
-                    "prob":
-                    over_score,
-
-                    "reasons":
-                    over_reasons
-
-                })
-
-            under_score = 50
-            under_reasons = []
-
-            if combined_era <= 6:
-
-                under_score += 15
-
-                under_reasons.append(
-                    "🔥 Elite Pitching Matchup"
-                )
-
-            if combined_k9 >= 18:
-
-                under_score += 10
-
-                under_reasons.append(
-                    "🔥 High Strikeout Pitchers"
-                )
-
-            if under_score >= 65:
-
-                totals.append({
-
-                    "matchup":
-                    f"{away} vs {home}",
-
-                    "bet":
-                    "UNDER 7",
-
-                    "prob":
-                    under_score,
-
-                    "reasons":
-                    under_reasons
-
-                })
-
-            # =========================
-            # TEAM TOTALS
-            # =========================
-
-            team_total_score = 50
-            team_total_reasons = []
-
-            if (
-                away_pitch['era']
-                >= 4.50
-            ):
-
-                team_total_score += 15
-
-                team_total_reasons.append(
-                    "🔥 Weak Opposing Pitcher"
-                )
-
-            if (
-                away_pitch['whip']
-                >= 1.35
-            ):
-
-                team_total_score += 10
-
-                team_total_reasons.append(
-                    "🔥 High WHIP Matchup"
-                )
-
-            if home_form >= 0.550:
-
-                team_total_score += 8
-
-                team_total_reasons.append(
-                    "🔥 Strong Team Form"
-                )
-
-            if team_total_score >= 65:
-
-                team_totals.append({
-
-                    "team":
-                    home,
-
-                    "bet":
-                    "TEAM TOTAL OVER 4.5",
-
-                    "prob":
-                    team_total_score,
-
-                    "reasons":
-                    team_total_reasons
-
-                })
+            })
 
         except Exception as e:
 
@@ -461,12 +359,11 @@ def get_mlb_picks():
                 f"Game Error: {e}"
             )
 
-    return (
-        moneylines[:5],
-        f5_picks[:5],
-        totals[:5],
-        team_totals[:5]
-    )
+    return sorted(
+        board,
+        key=lambda x: x['confidence'],
+        reverse=True
+    )[:7]
 
 # ==============================
 # BUILD MESSAGE
@@ -474,106 +371,80 @@ def get_mlb_picks():
 
 def build_message():
 
-    (
-        moneylines,
-        f5_picks,
-        totals,
-        team_totals
-    ) = get_mlb_picks()
+    board = get_mlb_board()
 
     msg = (
         "🔥 GOD TIER MLB BOARD 🔥\n\n"
     )
 
-    # ==========================
-    # MONEYLINES
-    # ==========================
+    for i, g in enumerate(board):
 
-    msg += "⚾ MONEYLINES\n\n"
+        medal = "🥇"
 
-    for p in moneylines:
+        if i == 1:
+            medal = "🥈"
+
+        elif i == 2:
+            medal = "🥉"
+
+        else:
+            medal = "⭐"
 
         msg += (
-            f"🔥 {p['team']} ML\n"
+            f"{medal} "
+            f"{g['matchup']}\n\n"
+        )
+
+        # ======================
+        # MONEYLINE
+        # ======================
+
+        msg += (
+            f"⚾ ML: "
+            f"{g['ml_team']}\n"
         )
 
         msg += (
-            f"📊 {p['prob']}%\n"
+            f"📊 Confidence: "
+            f"{g['confidence']}%\n\n"
         )
 
-        for r in p['reasons']:
-
-            msg += f"{r}\n"
-
-        msg += "\n------------------\n\n"
-
-    # ==========================
-    # F5
-    # ==========================
-
-    msg += "⚾ FIRST 5 INNINGS\n\n"
-
-    for p in f5_picks:
+        # ======================
+        # PROJECTED RUNS
+        # ======================
 
         msg += (
-            f"🔥 {p['team']} F5 ML\n"
+            f"🏟️ Projected Score:\n"
         )
 
         msg += (
-            f"📊 {p['prob']}%\n"
-        )
-
-        for r in p['reasons']:
-
-            msg += f"{r}\n"
-
-        msg += "\n------------------\n\n"
-
-    # ==========================
-    # TOTALS
-    # ==========================
-
-    msg += "🔥 TOTAL RUNS\n\n"
-
-    for t in totals:
-
-        msg += (
-            f"🔥 {t['matchup']} "
-            f"{t['bet']}\n"
+            f"Home: {g['home_runs']}\n"
         )
 
         msg += (
-            f"📊 {t['prob']}%\n"
-        )
-
-        for r in t['reasons']:
-
-            msg += f"{r}\n"
-
-        msg += "\n------------------\n\n"
-
-    # ==========================
-    # TEAM TOTALS
-    # ==========================
-
-    msg += "⚾ TEAM TOTALS\n\n"
-
-    for t in team_totals:
-
-        msg += (
-            f"🔥 {t['team']} "
-            f"{t['bet']}\n"
+            f"Away: {g['away_runs']}\n"
         )
 
         msg += (
-            f"📊 {t['prob']}%\n"
+            f"🔥 Total Runs: "
+            f"{g['total_runs']}\n\n"
         )
 
-        for r in t['reasons']:
+        # ======================
+        # TOTAL BET
+        # ======================
 
-            msg += f"{r}\n"
+        msg += (
+            f"🔥 Recommended Total:\n"
+        )
 
-        msg += "\n------------------\n\n"
+        msg += (
+            f"{g['total_bet']}\n"
+        )
+
+        msg += (
+            "\n----------------------\n\n"
+        )
 
     return msg
 
