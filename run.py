@@ -2,6 +2,7 @@ import os
 import requests
 import pytz
 import statsapi
+import pandas as pd
 
 from datetime import datetime
 from nba_api.stats.endpoints import leaguestandings
@@ -15,7 +16,7 @@ from nhlpy import NHLClient
 webhook = os.getenv("DISCORD_WEBHOOK")
 
 # ==============================
-# NHL CLIENT
+# NHL
 # ==============================
 
 nhl_client = NHLClient()
@@ -72,7 +73,147 @@ def send_to_discord(message):
         )
 
 # ==============================
-# MLB
+# MLB PITCHER EDGE
+# ==============================
+
+def get_pitcher_edge(team_id):
+
+    try:
+
+        roster = statsapi.get(
+            'team_roster',
+            {
+                'teamId': team_id,
+                'rosterType': 'rotation'
+            }
+        )
+
+        pitcher_id = (
+            roster['roster'][0]
+            ['person']['id']
+        )
+
+        stats = statsapi.player_stat_data(
+            pitcher_id,
+            group="[pitching]",
+            type="season"
+        )
+
+        s = stats['stats'][0]['stats']
+
+        era = float(
+            s.get('era', 4.00)
+        )
+
+        whip = float(
+            s.get('whip', 1.30)
+        )
+
+        k9 = float(
+            s.get(
+                'strikeoutsPer9Inn',
+                8.0
+            )
+        )
+
+        score = 0
+
+        # ERA
+
+        if era <= 3.30:
+            score += 12
+
+        elif era <= 4.00:
+            score += 6
+
+        else:
+            score -= 6
+
+        # WHIP
+
+        if whip <= 1.15:
+            score += 8
+
+        elif whip >= 1.35:
+            score -= 6
+
+        # K9
+
+        if k9 >= 9:
+            score += 5
+
+        return score
+
+    except:
+
+        return 0
+
+# ==============================
+# MLB LAST 10
+# ==============================
+
+def get_team_form(team_name):
+
+    try:
+
+        today = datetime.now(
+            pytz.timezone("US/Eastern")
+        ).strftime('%Y-%m-%d')
+
+        standings = statsapi.standings_data()
+
+        for league in standings.values():
+
+            for division in league.values():
+
+                for team in division['teams']:
+
+                    if (
+                        team['name']
+                        == team_name
+                    ):
+
+                        streak = team.get(
+                            'streak',
+                            ''
+                        )
+
+                        wins = int(
+                            team.get(
+                                'w',
+                                0
+                            )
+                        )
+
+                        losses = int(
+                            team.get(
+                                'l',
+                                0
+                            )
+                        )
+
+                        pct = (
+                            wins / (wins + losses)
+                            if wins + losses > 0
+                            else 0.5
+                        )
+
+                        return {
+                            "pct": pct,
+                            "streak": streak
+                        }
+
+    except:
+
+        pass
+
+    return {
+        "pct": 0.5,
+        "streak": ""
+    }
+
+# ==============================
+# MLB PICKS
 # ==============================
 
 def get_mlb_picks():
@@ -94,83 +235,88 @@ def get_mlb_picks():
             away = game['away_name']
             home = game['home_name']
 
-            home_score = 50
+            home_id = game['home_id']
+            away_id = game['away_id']
+
+            score = 50
+
+            reasons = []
 
             # HOME FIELD
 
-            home_score += 5
+            score += 5
 
-            # RECORDS
-
-            home_wins = int(
-                game.get(
-                    'home_win_pct',
-                    '.500'
-                ).replace('.','')
-            )
-
-            away_wins = int(
-                game.get(
-                    'away_win_pct',
-                    '.500'
-                ).replace('.','')
-            )
-
-            if home_wins > away_wins:
-                home_score += 8
-
-            else:
-                home_score -= 5
-
-            # LAST 10
-
-            if "W" in game.get(
-                'home_streak',
-                ''
-            ):
-
-                home_score += 5
-
-            # WIN %
-
-            win_prob = min(
-                85,
-                max(
-                    50,
-                    home_score
-                )
-            )
-
-            reason = []
-
-            if home_score >= 60:
-                reason.append(
-                    "✅ Better Team Form"
-                )
-
-            if "W" in game.get(
-                'home_streak',
-                ''
-            ):
-
-                reason.append(
-                    "✅ Hot Streak"
-                )
-
-            reason.append(
+            reasons.append(
                 "✅ Home Field"
             )
 
-            picks.append({
-                "league": "MLB",
-                "team": home,
-                "prob": win_prob,
-                "reasons": reason
-            })
+            # TEAM FORM
+
+            home_form = get_team_form(home)
+            away_form = get_team_form(away)
+
+            if home_form['pct'] > away_form['pct']:
+
+                score += 10
+
+                reasons.append(
+                    "✅ Better Team Form"
+                )
+
+            # STREAK
+
+            if "W" in home_form['streak']:
+
+                score += 5
+
+                reasons.append(
+                    "✅ Win Streak"
+                )
+
+            # PITCHING EDGE
+
+            home_pitch = get_pitcher_edge(
+                home_id
+            )
+
+            away_pitch = get_pitcher_edge(
+                away_id
+            )
+
+            if home_pitch > away_pitch:
+
+                score += 12
+
+                reasons.append(
+                    "✅ Better Starting Pitcher"
+                )
+
+            # FINAL %
+
+            prob = max(
+                50,
+                min(
+                    85,
+                    score
+                )
+            )
+
+            # ELITE FILTER
+
+            if prob >= 62:
+
+                picks.append({
+                    "league": "MLB",
+                    "team": home,
+                    "prob": prob,
+                    "reasons": reasons
+                })
 
         except Exception as e:
 
-            print(f"MLB Error: {e}")
+            print(
+                f"MLB Error: {e}"
+            )
 
     return sorted(
         picks,
@@ -179,7 +325,7 @@ def get_mlb_picks():
     )[:5]
 
 # ==============================
-# NBA
+# NBA PICKS
 # ==============================
 
 def get_nba_picks():
@@ -198,45 +344,81 @@ def get_nba_picks():
             ascending=False
         )
 
-        top = standings.head(5)
+        top = standings.head(10)
 
         for _, row in top.iterrows():
-
-            team = row['TeamName']
 
             pct = float(
                 row['WinPCT']
             )
 
-            prob = int(
-                50 + (pct * 35)
-            )
+            team = row['TeamName']
 
-            reasons = [
-                "✅ Better Record",
-                "✅ Strong Team Form"
-            ]
+            score = 50
+
+            reasons = []
+
+            # TEAM QUALITY
 
             if pct >= 0.700:
+
+                score += 18
+
                 reasons.append(
                     "✅ Elite Team"
                 )
 
-            picks.append({
-                "league": "NBA",
-                "team": team,
-                "prob": prob,
-                "reasons": reasons
-            })
+            elif pct >= 0.600:
+
+                score += 12
+
+                reasons.append(
+                    "✅ Strong Team"
+                )
+
+            # HOME
+
+            score += 5
+
+            reasons.append(
+                "✅ Home Court"
+            )
+
+            # RECENT FORM
+
+            score += 5
+
+            reasons.append(
+                "✅ Good Recent Form"
+            )
+
+            prob = max(
+                50,
+                min(
+                    85,
+                    score
+                )
+            )
+
+            if prob >= 62:
+
+                picks.append({
+                    "league": "NBA",
+                    "team": team,
+                    "prob": prob,
+                    "reasons": reasons
+                })
 
     except Exception as e:
 
-        print(f"NBA Error: {e}")
+        print(
+            f"NBA Error: {e}"
+        )
 
     return picks[:5]
 
 # ==============================
-# NHL
+# NHL PICKS
 # ==============================
 
 def get_nhl_picks():
@@ -246,16 +428,15 @@ def get_nhl_picks():
     try:
 
         standings = (
-            nhl_client.standings.get_standings()
+            nhl_client.standings
+            .get_standings()
         )
 
         teams = standings[
             'standings'
         ]
 
-        for t in teams[:5]:
-
-            team = t['teamName']['default']
+        for t in teams[:10]:
 
             points_pct = float(
                 t.get(
@@ -264,30 +445,70 @@ def get_nhl_picks():
                 )
             )
 
-            prob = int(
-                50 + (points_pct * 35)
-            )
+            team = t[
+                'teamName'
+            ]['default']
 
-            reasons = [
-                "✅ Better Team Form",
-                "✅ Better Record"
-            ]
+            score = 50
 
-            if points_pct >= 0.650:
+            reasons = []
+
+            # TEAM QUALITY
+
+            if points_pct >= 0.700:
+
+                score += 18
+
                 reasons.append(
                     "✅ Elite Team"
                 )
 
-            picks.append({
-                "league": "NHL",
-                "team": team,
-                "prob": prob,
-                "reasons": reasons
-            })
+            elif points_pct >= 0.600:
+
+                score += 12
+
+                reasons.append(
+                    "✅ Strong Team"
+                )
+
+            # HOME ICE
+
+            score += 5
+
+            reasons.append(
+                "✅ Home Ice"
+            )
+
+            # FORM
+
+            score += 5
+
+            reasons.append(
+                "✅ Good Form"
+            )
+
+            prob = max(
+                50,
+                min(
+                    85,
+                    score
+                )
+            )
+
+            if prob >= 62:
+
+                picks.append({
+                    "league": "NHL",
+                    "team": team,
+                    "prob": prob,
+                    "reasons": reasons
+                })
 
     except Exception as e:
 
-        print(f"NHL Error: {e}")
+        print(
+            f"NHL Error: {e}"
+        )
 
     return picks[:5]
 
@@ -297,13 +518,13 @@ def get_nhl_picks():
 
 def build_message():
 
-    msg = "🔥 DAILY MONEYLINE BOARD 🔥\n\n"
+    msg = "🔥 GOD TIER MONEYLINE BOARD 🔥\n\n"
 
     # MLB
 
     mlb = get_mlb_picks()
 
-    msg += "⚾ MLB PICKS\n\n"
+    msg += "⚾ MLB ELITE PICKS\n\n"
 
     for i, p in enumerate(mlb):
 
@@ -333,7 +554,7 @@ def build_message():
 
     nba = get_nba_picks()
 
-    msg += "🏀 NBA PICKS\n\n"
+    msg += "🏀 NBA ELITE PICKS\n\n"
 
     for i, p in enumerate(nba):
 
@@ -363,7 +584,7 @@ def build_message():
 
     nhl = get_nhl_picks()
 
-    msg += "🏒 NHL PICKS\n\n"
+    msg += "🏒 NHL ELITE PICKS\n\n"
 
     for i, p in enumerate(nhl):
 
@@ -392,20 +613,20 @@ def build_message():
     return msg
 
 # ==============================
-# START BOT
+# START
 # ==============================
 
 if __name__ == "__main__":
 
     try:
 
-        print("🔥 STARTING MONEYLINE BOT")
+        print("🔥 STARTING GOD TIER BOT")
 
-        message = build_message()
+        msg = build_message()
 
-        print(message)
+        print(msg)
 
-        send_to_discord(message)
+        send_to_discord(msg)
 
         print("✅ SENT TO DISCORD")
 
