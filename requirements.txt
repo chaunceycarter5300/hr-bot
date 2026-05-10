@@ -1,4 +1,6 @@
 requests
 pytz
-pandas
 MLB-StatsAPI
+pybaseball
+pandas
+numpy
