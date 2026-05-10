@@ -6,12 +6,19 @@ import pandas as pd
 
 from datetime import datetime
 from nba_api.stats.endpoints import leaguestandings
+from nhlpy import NHLClient
 
 # ==============================
 # ENV
 # ==============================
 
 webhook = os.getenv("DISCORD_WEBHOOK")
+
+# ==============================
+# NHL CLIENT
+# ==============================
+
+nhl_client = NHLClient()
 
 # ==============================
 # DISCORD
@@ -224,15 +231,11 @@ def get_mlb_picks():
 
             reasons = []
 
-            # HOME FIELD
-
             score += 5
 
             reasons.append(
                 "✅ Home Field"
             )
-
-            # TEAM FORM
 
             home_form = get_team_form(home)
             away_form = get_team_form(away)
@@ -245,8 +248,6 @@ def get_mlb_picks():
                     "✅ Better Team Form"
                 )
 
-            # WIN STREAK
-
             if "W" in home_form['streak']:
 
                 score += 5
@@ -254,8 +255,6 @@ def get_mlb_picks():
                 reasons.append(
                     "✅ Win Streak"
                 )
-
-            # PITCHER EDGE
 
             home_pitch = get_pitcher_edge(
                 home_id
@@ -273,8 +272,6 @@ def get_mlb_picks():
                     "✅ Better Starting Pitcher"
                 )
 
-            # FINAL %
-
             prob = max(
                 50,
                 min(
@@ -283,7 +280,7 @@ def get_mlb_picks():
                 )
             )
 
-            if prob >= 68:
+            if prob >= 60:
 
                 picks.append({
                     "team": home,
@@ -373,7 +370,7 @@ def get_nba_picks():
                 )
             )
 
-            if prob >= 68:
+            if prob >= 60:
 
                 picks.append({
                     "team": team,
@@ -385,6 +382,94 @@ def get_nba_picks():
 
         print(
             f"NBA Error: {e}"
+        )
+
+    return picks[:5]
+
+# ==============================
+# NHL PICKS
+# ==============================
+
+def get_nhl_picks():
+
+    picks = []
+
+    try:
+
+        standings = (
+            nhl_client.standings
+            .get_standings()
+        )
+
+        teams = standings[
+            'standings'
+        ]
+
+        for t in teams[:10]:
+
+            points_pct = float(
+                t.get(
+                    'pointPctg',
+                    0.500
+                )
+            )
+
+            team = t[
+                'teamName'
+            ]['default']
+
+            score = 50
+
+            reasons = []
+
+            if points_pct >= 0.700:
+
+                score += 18
+
+                reasons.append(
+                    "✅ Elite Team"
+                )
+
+            elif points_pct >= 0.600:
+
+                score += 12
+
+                reasons.append(
+                    "✅ Strong Team"
+                )
+
+            score += 5
+
+            reasons.append(
+                "✅ Home Ice"
+            )
+
+            score += 5
+
+            reasons.append(
+                "✅ Good Form"
+            )
+
+            prob = max(
+                50,
+                min(
+                    85,
+                    score
+                )
+            )
+
+            if prob >= 60:
+
+                picks.append({
+                    "team": team,
+                    "prob": prob,
+                    "reasons": reasons
+                })
+
+    except Exception as e:
+
+        print(
+            f"NHL Error: {e}"
         )
 
     return picks[:5]
@@ -481,6 +566,48 @@ def build_message():
 
         msg += "\n---------------------\n\n"
 
+    # NHL
+
+    nhl = get_nhl_picks()
+
+    msg += "🏒 NHL ELITE PICKS\n\n"
+
+    for i, p in enumerate(nhl):
+
+        medal = "🥇"
+
+        if i == 1:
+            medal = "🥈"
+
+        elif i == 2:
+            medal = "🥉"
+
+        msg += (
+            f"{medal} {p['team']} ML\n"
+        )
+
+        msg += (
+            f"📊 Win Probability: "
+            f"{p['prob']}%\n"
+        )
+
+        if p['prob'] >= 75:
+
+            msg += "👑 GOD TIER EDGE\n"
+
+        elif p['prob'] >= 70:
+
+            msg += "🔥 ELITE EDGE\n"
+
+        else:
+
+            msg += "✅ STRONG EDGE\n"
+
+        for r in p['reasons']:
+            msg += f"{r}\n"
+
+        msg += "\n---------------------\n\n"
+
     return msg
 
 # ==============================
@@ -491,7 +618,7 @@ if __name__ == "__main__":
 
     try:
 
-        print("🔥 STARTING MONEYLINE BOT")
+        print("🔥 STARTING GOD TIER MONEYLINE BOT")
 
         msg = build_message()
 
