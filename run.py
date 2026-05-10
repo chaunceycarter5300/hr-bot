@@ -1,6 +1,7 @@
 import os
 import requests
 import pytz
+import random
 import statsapi
 
 from datetime import datetime
@@ -40,7 +41,7 @@ def send_to_discord(message):
         )
 
 # ==============================
-# TEAM FORM + STRENGTH
+# TEAM STRENGTH
 # ==============================
 
 def get_team_strength(team_name):
@@ -68,9 +69,7 @@ def get_team_strength(team_name):
                             team.get('l', 0)
                         )
 
-                        games = (
-                            wins + losses
-                        )
+                        games = wins + losses
 
                         if games == 0:
                             return 0.500
@@ -130,10 +129,18 @@ def get_pitcher_stats(team_id):
             )
         )
 
+        hr9 = float(
+            s.get(
+                'homeRunsPer9',
+                1.1
+            )
+        )
+
         return {
             "era": era,
             "whip": whip,
-            "k9": k9
+            "k9": k9,
+            "hr9": hr9
         }
 
     except:
@@ -141,11 +148,77 @@ def get_pitcher_stats(team_id):
         return {
             "era": 4.00,
             "whip": 1.30,
-            "k9": 8.0
+            "k9": 8.0,
+            "hr9": 1.1
         }
 
 # ==============================
-# PROJECT TEAM RUNS
+# HR MODEL
+# ==============================
+
+def calculate_hr_confidence(
+    pitcher,
+    team_strength
+):
+
+    score = 14
+
+    # HR/9
+
+    if pitcher['hr9'] >= 1.5:
+
+        score += 10
+
+    elif pitcher['hr9'] >= 1.2:
+
+        score += 6
+
+    # ERA
+
+    if pitcher['era'] >= 5:
+
+        score += 6
+
+    elif pitcher['era'] >= 4:
+
+        score += 3
+
+    # WHIP
+
+    if pitcher['whip'] >= 1.40:
+
+        score += 5
+
+    # K9
+
+    if pitcher['k9'] <= 7:
+
+        score += 4
+
+    elif pitcher['k9'] >= 10:
+
+        score -= 3
+
+    # TEAM STRENGTH
+
+    if team_strength >= 0.600:
+
+        score += 5
+
+    elif team_strength <= 0.450:
+
+        score -= 3
+
+    return max(
+        12,
+        min(
+            40,
+            score
+        )
+    )
+
+# ==============================
+# PROJECT RUNS
 # ==============================
 
 def project_runs(
@@ -155,21 +228,13 @@ def project_runs(
 
     runs = 4.3
 
-    # TEAM STRENGTH
-
     if team_strength >= 0.600:
 
         runs += 1.0
 
-    elif team_strength >= 0.550:
-
-        runs += 0.5
-
     elif team_strength <= 0.450:
 
-        runs -= 0.7
-
-    # ERA
+        runs -= 0.8
 
     if opposing_pitcher['era'] >= 5:
 
@@ -183,27 +248,31 @@ def project_runs(
 
         runs -= 0.8
 
-    # WHIP
-
-    if opposing_pitcher['whip'] >= 1.40:
-
-        runs += 0.8
-
-    elif opposing_pitcher['whip'] <= 1.10:
-
-        runs -= 0.6
-
-    # K9
-
-    if opposing_pitcher['k9'] >= 10:
-
-        runs -= 0.5
-
-    elif opposing_pitcher['k9'] <= 7:
-
-        runs += 0.4
-
     return round(runs, 1)
+
+# ==============================
+# FAKE PLAYER POOL
+# REPLACE WITH REAL PLAYERS LATER
+# ==============================
+
+team_hr_players = {
+
+    "New York Yankees":
+    ["Aaron Judge"],
+
+    "Los Angeles Dodgers":
+    ["Shohei Ohtani"],
+
+    "Philadelphia Phillies":
+    ["Kyle Schwarber"],
+
+    "Atlanta Braves":
+    ["Matt Olson"],
+
+    "New York Mets":
+    ["Pete Alonso"]
+
+}
 
 # ==============================
 # BUILD BOARD
@@ -269,19 +338,6 @@ def get_board():
                 home_pitch
             )
 
-            total_runs = round(
-                home_runs + away_runs,
-                1
-            )
-
-            total_runs = max(
-                6.5,
-                min(
-                    14.5,
-                    total_runs
-                )
-            )
-
             # ======================
             # WINNER
             # ======================
@@ -300,57 +356,72 @@ def get_board():
                     away_runs - home_runs
                 )
 
-            # ======================
-            # REALISTIC CONFIDENCE
-            # ======================
-
-            confidence = int(
+            ml_confidence = int(
                 54 + (edge * 4)
             )
 
-            confidence = max(
+            ml_confidence = max(
                 54,
                 min(
                     74,
-                    confidence
+                    ml_confidence
                 )
             )
 
             # ======================
-            # RUN LINE
+            # HR PLAYER
             # ======================
 
-            if edge >= 2:
+            hr_team = ml_team
 
-                run_line = (
-                    f"{ml_team} -1.5"
+            if hr_team in team_hr_players:
+
+                hr_player = random.choice(
+                    team_hr_players[hr_team]
                 )
 
             else:
 
-                run_line = (
-                    f"{ml_team} ML"
+                continue
+
+            # ======================
+            # HR CONFIDENCE
+            # ======================
+
+            if hr_team == home:
+
+                hr_confidence = (
+                    calculate_hr_confidence(
+                        away_pitch,
+                        home_strength
+                    )
                 )
-
-            # ======================
-            # F5
-            # ======================
-
-            if (
-                home_pitch['era']
-                <
-                away_pitch['era']
-            ):
-
-                f5_team = home
 
             else:
 
-                f5_team = away
+                hr_confidence = (
+                    calculate_hr_confidence(
+                        home_pitch,
+                        away_strength
+                    )
+                )
 
             # ======================
-            # TOTAL BET
+            # TOTALS
             # ======================
+
+            total_runs = round(
+                home_runs + away_runs,
+                1
+            )
+
+            total_runs = max(
+                6.5,
+                min(
+                    14.5,
+                    total_runs
+                )
+            )
 
             projected_total = round(
                 total_runs * 2
@@ -382,20 +453,14 @@ def get_board():
                 "ml_team":
                 ml_team,
 
-                "run_line":
-                run_line,
+                "ml_confidence":
+                ml_confidence,
 
-                "f5_team":
-                f5_team,
+                "hr_player":
+                hr_player,
 
-                "confidence":
-                confidence,
-
-                "home_runs":
-                home_runs,
-
-                "away_runs":
-                away_runs,
+                "hr_confidence":
+                hr_confidence,
 
                 "total_runs":
                 total_runs,
@@ -413,9 +478,9 @@ def get_board():
 
     return sorted(
         board,
-        key=lambda x: x['confidence'],
+        key=lambda x: x['hr_confidence'],
         reverse=True
-    )[:7]
+    )[:5]
 
 # ==============================
 # BUILD MESSAGE
@@ -426,7 +491,7 @@ def build_message():
     board = get_board()
 
     msg = (
-        "🔥 REAL STATS MLB BOARD 🔥\n\n"
+        "🔥 ELITE HR + ML BOARD 🔥\n\n"
     )
 
     for i, g in enumerate(board):
@@ -448,44 +513,36 @@ def build_message():
         )
 
         msg += (
-            f"⚾ ML: "
-            f"{g['ml_team']}\n"
+            f"💣 HR PROP:\n"
         )
 
         msg += (
-            f"📊 Confidence: "
-            f"{g['confidence']}%\n\n"
+            f"{g['hr_player']} HR\n"
         )
 
         msg += (
-            f"⚾ Run Line: "
-            f"{g['run_line']}\n\n"
+            f"📊 HR Confidence: "
+            f"{g['hr_confidence']}%\n\n"
         )
 
         msg += (
-            f"⚾ F5 ML: "
-            f"{g['f5_team']}\n\n"
+            f"⚾ MONEYLINE:\n"
         )
 
         msg += (
-            f"🏟️ Projected Score\n"
+            f"{g['ml_team']} ML\n"
         )
 
         msg += (
-            f"Home: {g['home_runs']}\n"
+            f"📊 ML Confidence: "
+            f"{g['ml_confidence']}%\n\n"
         )
 
         msg += (
-            f"Away: {g['away_runs']}\n\n"
+            f"🔥 Total Bet:\n"
         )
 
         msg += (
-            f"🔥 Total Runs: "
-            f"{g['total_runs']}\n"
-        )
-
-        msg += (
-            f"🔥 Bet: "
             f"{g['total_bet']}\n"
         )
 
@@ -504,7 +561,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING REAL MLB MODEL"
+            "🔥 STARTING HR + ML MODEL"
         )
 
         msg = build_message()
