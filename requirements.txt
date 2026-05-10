@@ -2,6 +2,4 @@ requests
 pytz
 pandas
 nba_api
-nhlpy
-mlbstatsapi
 MLB-StatsAPI
