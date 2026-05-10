@@ -1,5 +1,5 @@
 requests
 pytz
 pandas
-nba_api
+nba-api
 MLB-StatsAPI
