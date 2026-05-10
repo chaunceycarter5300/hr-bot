@@ -6,7 +6,6 @@ import pandas as pd
 
 from datetime import datetime
 from nba_api.stats.endpoints import leaguestandings
-from nba_api.stats.static import teams
 from nhlpy import NHLClient
 
 # ==============================
@@ -149,16 +148,12 @@ def get_pitcher_edge(team_id):
         return 0
 
 # ==============================
-# MLB LAST 10
+# TEAM FORM
 # ==============================
 
 def get_team_form(team_name):
 
     try:
-
-        today = datetime.now(
-            pytz.timezone("US/Eastern")
-        ).strftime('%Y-%m-%d')
 
         standings = statsapi.standings_data()
 
@@ -263,7 +258,7 @@ def get_mlb_picks():
                     "✅ Better Team Form"
                 )
 
-            # STREAK
+            # WIN STREAK
 
             if "W" in home_form['streak']:
 
@@ -273,7 +268,7 @@ def get_mlb_picks():
                     "✅ Win Streak"
                 )
 
-            # PITCHING EDGE
+            # PITCHER EDGE
 
             home_pitch = get_pitcher_edge(
                 home_id
@@ -301,9 +296,9 @@ def get_mlb_picks():
                 )
             )
 
-            # ELITE FILTER
+            # ULTRA FILTER
 
-            if prob >= 62:
+            if prob >= 68:
 
                 picks.append({
                     "league": "MLB",
@@ -358,7 +353,7 @@ def get_nba_picks():
 
             reasons = []
 
-            # TEAM QUALITY
+            # ELITE TEAM
 
             if pct >= 0.700:
 
@@ -376,7 +371,7 @@ def get_nba_picks():
                     "✅ Strong Team"
                 )
 
-            # HOME
+            # HOME COURT
 
             score += 5
 
@@ -400,7 +395,9 @@ def get_nba_picks():
                 )
             )
 
-            if prob >= 62:
+            # ULTRA FILTER
+
+            if prob >= 68:
 
                 picks.append({
                     "league": "NBA",
@@ -453,7 +450,7 @@ def get_nhl_picks():
 
             reasons = []
 
-            # TEAM QUALITY
+            # ELITE TEAM
 
             if points_pct >= 0.700:
 
@@ -495,7 +492,9 @@ def get_nhl_picks():
                 )
             )
 
-            if prob >= 62:
+            # ULTRA FILTER
+
+            if prob >= 68:
 
                 picks.append({
                     "league": "NHL",
@@ -545,6 +544,20 @@ def build_message():
             f"{p['prob']}%\n"
         )
 
+        # EDGE TAGS
+
+        if p['prob'] >= 75:
+
+            msg += "👑 GOD TIER EDGE\n"
+
+        elif p['prob'] >= 70:
+
+            msg += "🔥 ELITE EDGE\n"
+
+        else:
+
+            msg += "✅ STRONG EDGE\n"
+
         for r in p['reasons']:
             msg += f"{r}\n"
 
@@ -574,6 +587,18 @@ def build_message():
             f"📊 Win Probability: "
             f"{p['prob']}%\n"
         )
+
+        if p['prob'] >= 75:
+
+            msg += "👑 GOD TIER EDGE\n"
+
+        elif p['prob'] >= 70:
+
+            msg += "🔥 ELITE EDGE\n"
+
+        else:
+
+            msg += "✅ STRONG EDGE\n"
 
         for r in p['reasons']:
             msg += f"{r}\n"
@@ -605,6 +630,18 @@ def build_message():
             f"{p['prob']}%\n"
         )
 
+        if p['prob'] >= 75:
+
+            msg += "👑 GOD TIER EDGE\n"
+
+        elif p['prob'] >= 70:
+
+            msg += "🔥 ELITE EDGE\n"
+
+        else:
+
+            msg += "✅ STRONG EDGE\n"
+
         for r in p['reasons']:
             msg += f"{r}\n"
 
@@ -613,14 +650,14 @@ def build_message():
     return msg
 
 # ==============================
-# START
+# START BOT
 # ==============================
 
 if __name__ == "__main__":
 
     try:
 
-        print("🔥 STARTING GOD TIER BOT")
+        print("🔥 STARTING GOD TIER MONEYLINE BOT")
 
         msg = build_message()
 
