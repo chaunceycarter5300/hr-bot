@@ -6,19 +6,12 @@ import pandas as pd
 
 from datetime import datetime
 from nba_api.stats.endpoints import leaguestandings
-from nhlpy import NHLClient
 
 # ==============================
 # ENV
 # ==============================
 
 webhook = os.getenv("DISCORD_WEBHOOK")
-
-# ==============================
-# NHL
-# ==============================
-
-nhl_client = NHLClient()
 
 # ==============================
 # DISCORD
@@ -117,8 +110,6 @@ def get_pitcher_edge(team_id):
 
         score = 0
 
-        # ERA
-
         if era <= 3.30:
             score += 12
 
@@ -128,15 +119,11 @@ def get_pitcher_edge(team_id):
         else:
             score -= 6
 
-        # WHIP
-
         if whip <= 1.15:
             score += 8
 
         elif whip >= 1.35:
             score -= 6
-
-        # K9
 
         if k9 >= 9:
             score += 5
@@ -296,12 +283,9 @@ def get_mlb_picks():
                 )
             )
 
-            # ULTRA FILTER
-
             if prob >= 68:
 
                 picks.append({
-                    "league": "MLB",
                     "team": home,
                     "prob": prob,
                     "reasons": reasons
@@ -353,8 +337,6 @@ def get_nba_picks():
 
             reasons = []
 
-            # ELITE TEAM
-
             if pct >= 0.700:
 
                 score += 18
@@ -371,15 +353,11 @@ def get_nba_picks():
                     "✅ Strong Team"
                 )
 
-            # HOME COURT
-
             score += 5
 
             reasons.append(
                 "✅ Home Court"
             )
-
-            # RECENT FORM
 
             score += 5
 
@@ -395,12 +373,9 @@ def get_nba_picks():
                 )
             )
 
-            # ULTRA FILTER
-
             if prob >= 68:
 
                 picks.append({
-                    "league": "NBA",
                     "team": team,
                     "prob": prob,
                     "reasons": reasons
@@ -410,103 +385,6 @@ def get_nba_picks():
 
         print(
             f"NBA Error: {e}"
-        )
-
-    return picks[:5]
-
-# ==============================
-# NHL PICKS
-# ==============================
-
-def get_nhl_picks():
-
-    picks = []
-
-    try:
-
-        standings = (
-            nhl_client.standings
-            .get_standings()
-        )
-
-        teams = standings[
-            'standings'
-        ]
-
-        for t in teams[:10]:
-
-            points_pct = float(
-                t.get(
-                    'pointPctg',
-                    0.500
-                )
-            )
-
-            team = t[
-                'teamName'
-            ]['default']
-
-            score = 50
-
-            reasons = []
-
-            # ELITE TEAM
-
-            if points_pct >= 0.700:
-
-                score += 18
-
-                reasons.append(
-                    "✅ Elite Team"
-                )
-
-            elif points_pct >= 0.600:
-
-                score += 12
-
-                reasons.append(
-                    "✅ Strong Team"
-                )
-
-            # HOME ICE
-
-            score += 5
-
-            reasons.append(
-                "✅ Home Ice"
-            )
-
-            # FORM
-
-            score += 5
-
-            reasons.append(
-                "✅ Good Form"
-            )
-
-            prob = max(
-                50,
-                min(
-                    85,
-                    score
-                )
-            )
-
-            # ULTRA FILTER
-
-            if prob >= 68:
-
-                picks.append({
-                    "league": "NHL",
-                    "team": team,
-                    "prob": prob,
-                    "reasons": reasons
-                })
-
-    except Exception as e:
-
-        print(
-            f"NHL Error: {e}"
         )
 
     return picks[:5]
@@ -543,8 +421,6 @@ def build_message():
             f"📊 Win Probability: "
             f"{p['prob']}%\n"
         )
-
-        # EDGE TAGS
 
         if p['prob'] >= 75:
 
@@ -605,48 +481,6 @@ def build_message():
 
         msg += "\n---------------------\n\n"
 
-    # NHL
-
-    nhl = get_nhl_picks()
-
-    msg += "🏒 NHL ELITE PICKS\n\n"
-
-    for i, p in enumerate(nhl):
-
-        medal = "🥇"
-
-        if i == 1:
-            medal = "🥈"
-
-        elif i == 2:
-            medal = "🥉"
-
-        msg += (
-            f"{medal} {p['team']} ML\n"
-        )
-
-        msg += (
-            f"📊 Win Probability: "
-            f"{p['prob']}%\n"
-        )
-
-        if p['prob'] >= 75:
-
-            msg += "👑 GOD TIER EDGE\n"
-
-        elif p['prob'] >= 70:
-
-            msg += "🔥 ELITE EDGE\n"
-
-        else:
-
-            msg += "✅ STRONG EDGE\n"
-
-        for r in p['reasons']:
-            msg += f"{r}\n"
-
-        msg += "\n---------------------\n\n"
-
     return msg
 
 # ==============================
@@ -657,7 +491,7 @@ if __name__ == "__main__":
 
     try:
 
-        print("🔥 STARTING GOD TIER MONEYLINE BOT")
+        print("🔥 STARTING MONEYLINE BOT")
 
         msg = build_message()
 
