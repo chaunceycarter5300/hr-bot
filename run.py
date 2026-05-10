@@ -254,7 +254,7 @@ def get_mlb_board():
             )
 
             # ======================
-            # PROJECTED RUNS
+            # PROJECT RUNS
             # ======================
 
             home_runs = project_team_runs(
@@ -272,8 +272,6 @@ def get_mlb_board():
                 1
             )
 
-            # REALISTIC RANGE
-
             total_runs = max(
                 6.5,
                 min(
@@ -283,13 +281,12 @@ def get_mlb_board():
             )
 
             # ======================
-            # MONEYLINE
+            # WINNER
             # ======================
 
             if home_runs > away_runs:
 
                 ml_team = home
-
                 edge = (
                     home_runs - away_runs
                 )
@@ -297,7 +294,6 @@ def get_mlb_board():
             else:
 
                 ml_team = away
-
                 edge = (
                     away_runs - home_runs
                 )
@@ -331,14 +327,28 @@ def get_mlb_board():
                 f5_team = away
 
             # ======================
-            # SPORTSBOOK TOTALS
+            # RUN LINE
+            # ======================
+
+            if edge >= 1.5:
+
+                run_line = (
+                    f"{ml_team} -1.5"
+                )
+
+            else:
+
+                run_line = (
+                    f"{ml_team} ML"
+                )
+
+            # ======================
+            # TOTALS
             # ======================
 
             projected_total = round(
                 total_runs * 2
             ) / 2
-
-            # OVERS
 
             if projected_total >= 10:
 
@@ -350,8 +360,6 @@ def get_mlb_board():
                     f"OVER {betting_total}"
                 )
 
-            # UNDERS
-
             elif projected_total <= 7:
 
                 betting_total = (
@@ -361,8 +369,6 @@ def get_mlb_board():
                 total_bet = (
                     f"UNDER {betting_total}"
                 )
-
-            # MID RANGE
 
             else:
 
@@ -381,6 +387,9 @@ def get_mlb_board():
 
                 "ml_team":
                 ml_team,
+
+                "run_line":
+                run_line,
 
                 "f5_team":
                 f5_team,
@@ -444,9 +453,7 @@ def build_message():
             f"{g['matchup']}\n\n"
         )
 
-        # ======================
         # ML
-        # ======================
 
         msg += (
             f"⚾ ML: "
@@ -458,18 +465,21 @@ def build_message():
             f"{g['confidence']}%\n\n"
         )
 
-        # ======================
+        # RUN LINE
+
+        msg += (
+            f"⚾ Run Line: "
+            f"{g['run_line']}\n\n"
+        )
+
         # F5
-        # ======================
 
         msg += (
             f"⚾ F5 ML: "
             f"{g['f5_team']}\n\n"
         )
 
-        # ======================
         # SCORE
-        # ======================
 
         msg += (
             f"🏟️ Projected Score\n"
@@ -483,9 +493,7 @@ def build_message():
             f"Away: {g['away_runs']}\n\n"
         )
 
-        # ======================
         # TOTALS
-        # ======================
 
         msg += (
             f"🔥 Total Runs: "
