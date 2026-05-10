@@ -1,4 +1,3 @@
-```python
 import os
 import requests
 import pytz
@@ -647,4 +646,3 @@ if __name__ == "__main__":
         print(
             f"❌ BOT ERROR: {e}"
         )
-```
