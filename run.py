@@ -315,6 +315,14 @@ def get_nba_picks():
             .get_data_frames()[0]
         )
 
+    except Exception as e:
+
+        print(f"NBA standings failed: {e}")
+
+        return []
+
+    try:
+
         standings = standings.sort_values(
             by="WinPCT",
             ascending=False
@@ -400,6 +408,14 @@ def get_nhl_picks():
             nhl_client.standings
             .get_standings()
         )
+
+    except Exception as e:
+
+        print(f"NHL standings failed: {e}")
+
+        return []
+
+    try:
 
         teams = standings[
             'standings'
@@ -530,6 +546,10 @@ def build_message():
 
     msg += "🏀 NBA ELITE PICKS\n\n"
 
+    if not nba:
+
+        msg += "❌ NBA PICKS UNAVAILABLE\n\n"
+
     for i, p in enumerate(nba):
 
         medal = "🥇"
@@ -571,6 +591,10 @@ def build_message():
     nhl = get_nhl_picks()
 
     msg += "🏒 NHL ELITE PICKS\n\n"
+
+    if not nhl:
+
+        msg += "❌ NHL PICKS UNAVAILABLE\n\n"
 
     for i, p in enumerate(nhl):
 
