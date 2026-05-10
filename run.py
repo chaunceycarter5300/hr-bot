@@ -2,15 +2,19 @@ import os
 import requests
 import pytz
 import statsapi
-import random
+import pandas as pd
+import numpy as np
 
+from pybaseball import statcast_batter
 from datetime import datetime
 
 # ==============================
 # ENV
 # ==============================
 
-webhook = os.getenv("DISCORD_WEBHOOK")
+webhook = os.getenv(
+    "DISCORD_WEBHOOK"
+)
 
 # ==============================
 # DISCORD
@@ -19,14 +23,21 @@ webhook = os.getenv("DISCORD_WEBHOOK")
 def send_to_discord(message):
 
     if not webhook:
+
         print("❌ NO WEBHOOK")
+
         return
 
     try:
 
         response = requests.post(
+
             webhook,
-            json={"content": message}
+
+            json={
+                "content": message
+            }
+
         )
 
         print(
@@ -39,6 +50,53 @@ def send_to_discord(message):
         print(
             f"Discord Error: {e}"
         )
+
+# ==============================
+# WEATHER
+# ==============================
+
+def get_weather_boost(city):
+
+    api_key = os.getenv(
+        "OPENWEATHER_API_KEY"
+    )
+
+    if not api_key:
+
+        return 0
+
+    try:
+
+        url = (
+            f"https://api.openweathermap.org/data/2.5/weather"
+            f"?q={city}&appid={api_key}&units=imperial"
+        )
+
+        r = requests.get(url).json()
+
+        temp = r['main']['temp']
+
+        wind = r['wind']['speed']
+
+        boost = 0
+
+        # HOT WEATHER
+
+        if temp >= 80:
+
+            boost += 2
+
+        # WIND
+
+        if wind >= 10:
+
+            boost += 2
+
+        return boost
+
+    except:
+
+        return 0
 
 # ==============================
 # TEAM STRENGTH
@@ -62,16 +120,25 @@ def get_team_strength(team_name):
                     ):
 
                         wins = int(
-                            team.get('w', 0)
+                            team.get(
+                                'w',
+                                0
+                            )
                         )
 
                         losses = int(
-                            team.get('l', 0)
+                            team.get(
+                                'l',
+                                0
+                            )
                         )
 
-                        games = wins + losses
+                        games = (
+                            wins + losses
+                        )
 
                         if games == 0:
+
                             return 0.500
 
                         return round(
@@ -94,11 +161,16 @@ def get_pitcher_stats(team_id):
     try:
 
         roster = statsapi.get(
+
             'team_roster',
+
             {
+
                 'teamId': team_id,
                 'rosterType': 'rotation'
+
             }
+
         )
 
         pitcher_id = (
@@ -107,19 +179,28 @@ def get_pitcher_stats(team_id):
         )
 
         stats = statsapi.player_stat_data(
+
             pitcher_id,
+
             group="[pitching]",
             type="season"
+
         )
 
         s = stats['stats'][0]['stats']
 
         era = float(
-            s.get('era', 4.00)
+            s.get(
+                'era',
+                4.00
+            )
         )
 
         whip = float(
-            s.get('whip', 1.30)
+            s.get(
+                'whip',
+                1.30
+            )
         )
 
         k9 = float(
@@ -137,19 +218,88 @@ def get_pitcher_stats(team_id):
         )
 
         return {
+
             "era": era,
             "whip": whip,
             "k9": k9,
             "hr9": hr9
+
         }
 
     except:
 
         return {
+
             "era": 4.00,
             "whip": 1.30,
             "k9": 8.0,
             "hr9": 1.1
+
+        }
+
+# ==============================
+# STATCAST POWER
+# ==============================
+
+def get_statcast_power(player_id):
+
+    try:
+
+        data = statcast_batter(
+
+            start_dt='2026-04-01',
+            end_dt='2026-12-31',
+            player_id=player_id
+
+        )
+
+        if data.empty:
+
+            return {
+
+                "barrel": 0,
+                "launch_speed": 0
+
+            }
+
+        # BARRELS
+
+        barrels = len(
+
+            data[
+                data['launch_speed'] >= 98
+            ]
+
+        )
+
+        barrel_rate = (
+            barrels / len(data)
+        ) * 100
+
+        # EXIT VELO
+
+        avg_ev = (
+            data['launch_speed']
+            .mean()
+        )
+
+        return {
+
+            "barrel":
+            round(barrel_rate, 1),
+
+            "launch_speed":
+            round(avg_ev, 1)
+
+        }
+
+    except:
+
+        return {
+
+            "barrel": 0,
+            "launch_speed": 0
+
         }
 
 # ==============================
@@ -163,11 +313,16 @@ def get_team_hitters(team_id):
     try:
 
         roster = statsapi.get(
+
             'team_roster',
+
             {
+
                 'teamId': team_id,
                 'rosterType': 'active'
+
             }
+
         )
 
         for player in roster['roster']:
@@ -183,15 +338,21 @@ def get_team_hitters(team_id):
                 )
 
                 stats = statsapi.player_stat_data(
+
                     player_id,
+
                     group="[hitting]",
                     type="season"
+
                 )
 
                 s = stats['stats'][0]['stats']
 
                 hr = int(
-                    s.get('homeRuns', 0)
+                    s.get(
+                        'homeRuns',
+                        0
+                    )
                 )
 
                 slg = float(
@@ -208,13 +369,35 @@ def get_team_hitters(team_id):
                     )
                 )
 
+                # ======================
+                # STATCAST
+                # ======================
+
+                power = get_statcast_power(
+                    player_id
+                )
+
+                barrel = power['barrel']
+
+                ev = power['launch_speed']
+
+                # ======================
                 # HR SCORE
+                # ======================
 
                 score = 0
 
                 score += hr * 1.5
                 score += slg * 12
                 score += ops * 8
+
+                # BARREL %
+
+                score += barrel * 2.2
+
+                # EXIT VELO
+
+                score += ev * 0.35
 
                 hitters.append({
 
@@ -241,9 +424,12 @@ def get_team_hitters(team_id):
 # ==============================
 
 def calculate_hr_probability(
+
     hitter_score,
     pitcher,
-    team_strength
+    team_strength,
+    weather_boost
+
 ):
 
     score = 10
@@ -298,7 +484,12 @@ def calculate_hr_probability(
 
         score -= 3
 
+    # WEATHER
+
+    score += weather_boost
+
     return int(
+
         max(
             12,
             min(
@@ -306,16 +497,20 @@ def calculate_hr_probability(
                 score
             )
         )
+
     )
 
 # ==============================
-# PICK BEST HR HITTER
+# BEST HR HITTER
 # ==============================
 
 def get_best_hr_hitter(
+
     hitters,
     pitcher,
-    strength
+    strength,
+    weather_boost
+
 ):
 
     if not hitters:
@@ -328,9 +523,12 @@ def get_best_hr_hitter(
     for hitter in hitters:
 
         prob = calculate_hr_probability(
+
             hitter['score'],
             pitcher,
-            strength
+            strength,
+            weather_boost
+
         )
 
         if prob > best_prob:
@@ -356,7 +554,11 @@ def get_best_hr_hitter(
 def get_board():
 
     today = datetime.now(
-        pytz.timezone("US/Eastern")
+
+        pytz.timezone(
+            "US/Eastern"
+        )
+
     ).strftime('%Y-%m-%d')
 
     games = statsapi.schedule(
@@ -375,6 +577,8 @@ def get_board():
             away_id = game['away_id']
             home_id = game['home_id']
 
+            # TEAM STRENGTH
+
             home_strength = get_team_strength(
                 home
             )
@@ -382,6 +586,14 @@ def get_board():
             away_strength = get_team_strength(
                 away
             )
+
+            # WEATHER
+
+            weather_boost = get_weather_boost(
+                home
+            )
+
+            # PITCHERS
 
             home_pitch = get_pitcher_stats(
                 home_id
@@ -391,18 +603,19 @@ def get_board():
                 away_id
             )
 
-            # ======================
-            # HOME TEAM
-            # ======================
+            # HOME HITTERS
 
             home_hitters = get_team_hitters(
                 home_id
             )
 
             best_home = get_best_hr_hitter(
+
                 home_hitters,
                 away_pitch,
-                home_strength
+                home_strength,
+                weather_boost
+
             )
 
             if best_home:
@@ -420,18 +633,19 @@ def get_board():
 
                 })
 
-            # ======================
-            # AWAY TEAM
-            # ======================
+            # AWAY HITTERS
 
             away_hitters = get_team_hitters(
                 away_id
             )
 
             best_away = get_best_hr_hitter(
+
                 away_hitters,
                 home_pitch,
-                away_strength
+                away_strength,
+                weather_boost
+
             )
 
             if best_away:
@@ -456,9 +670,12 @@ def get_board():
             )
 
     return sorted(
+
         board,
+
         key=lambda x: x['prob'],
         reverse=True
+
     )
 
 # ==============================
@@ -478,12 +695,15 @@ def build_message():
         medal = "⭐"
 
         if i == 0:
+
             medal = "🥇"
 
         elif i == 1:
+
             medal = "🥈"
 
         elif i == 2:
+
             medal = "🥉"
 
         msg += (
@@ -516,7 +736,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING FINAL HR ENGINE"
+            "🔥 STARTING ADVANCED HR ENGINE"
         )
 
         msg = build_message()
