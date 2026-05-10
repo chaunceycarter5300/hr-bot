@@ -1,842 +1,24 @@
 import os
 import requests
-import statsapi
 import pytz
+import statsapi
 
 from datetime import datetime
-from pybaseball import statcast_batter_exitvelo_barrels
+from nba_api.stats.endpoints import leaguestandings
+from nba_api.stats.static import teams
+from nhlpy import NHLClient
 
 # ==============================
-# CACHE
-# ==============================
-
-STATCAST_DATA = None
-
-# ==============================
-# ENV VARIABLES
+# ENV
 # ==============================
 
 webhook = os.getenv("DISCORD_WEBHOOK")
-weather_key = os.getenv("OPENWEATHER_API_KEY")
 
 # ==============================
-# WEATHER / PARK BOOSTS
+# NHL CLIENT
 # ==============================
 
-PARK_BOOST = {
-    "Coors Field": 1.25,
-    "Yankee Stadium": 1.15,
-    "Great American Ball Park": 1.12,
-    "Fenway Park": 1.10
-}
-
-STADIUM_COORDS = {
-    "Yankee Stadium": (40.8296, -73.9262),
-    "Coors Field": (39.7559, -104.9942),
-    "Fenway Park": (42.3467, -71.0972)
-}
-
-# ==============================
-# GET TODAY GAMES
-# ==============================
-
-def get_games_today():
-
-    today = datetime.now(
-        pytz.timezone("US/Eastern")
-    ).strftime('%Y-%m-%d')
-
-    return statsapi.schedule(date=today)
-
-# ==============================
-# GET LINEUPS
-# ==============================
-
-def get_lineup(team_id):
-
-    try:
-
-        roster = statsapi.get(
-            'team_roster',
-            {
-                'teamId': team_id,
-                'rosterType': 'active'
-            }
-        )
-
-        hitters = []
-
-        for p in roster['roster']:
-
-            pos = p.get(
-                'position',
-                {}
-            ).get(
-                'abbreviation',
-                ''
-            )
-
-            if pos in ['P', 'TWP']:
-                continue
-
-            hitters.append({
-                "id": p['person']['id'],
-                "name": p['person']['fullName']
-            })
-
-        return hitters[:9]
-
-    except Exception as e:
-
-        print(f"Lineup Error: {e}")
-
-        return []
-
-# ==============================
-# PITCHERS
-# ==============================
-
-def get_pitcher(team_id):
-
-    try:
-
-        roster = statsapi.get(
-            'team_roster',
-            {
-                'teamId': team_id,
-                'rosterType': 'rotation'
-            }
-        )
-
-        return roster['roster'][0]['person']['id']
-
-    except:
-
-        return None
-
-# ==============================
-# DAILY PITCHER MATCHUP
-# ==============================
-
-def get_pitcher_matchup_boost(pitcher_id):
-
-    try:
-
-        stats = statsapi.player_stat_data(
-            pitcher_id,
-            group="[pitching]",
-            type="season"
-        )
-
-        s = stats['stats'][0]['stats']
-
-        hr_allowed = int(
-            s.get('homeRuns', 0)
-        )
-
-        innings = float(
-            s.get(
-                'inningsPitched',
-                1
-            )
-        )
-
-        whip = float(
-            s.get(
-                'whip',
-                1.20
-            )
-        )
-
-        era = float(
-            s.get(
-                'era',
-                4.00
-            )
-        )
-
-        hr9 = (
-            (hr_allowed * 9)
-            / innings
-            if innings > 0 else 1
-        )
-
-        boost = 1.0
-
-        if hr9 >= 1.5:
-            boost += 0.18
-
-        elif hr9 >= 1.2:
-            boost += 0.10
-
-        if era >= 4.50:
-            boost += 0.08
-
-        if whip >= 1.35:
-            boost += 0.05
-
-        return boost
-
-    except:
-
-        return 1.0
-
-# ==============================
-# RECENT FORM
-# ==============================
-
-def get_recent_form(player_id):
-
-    try:
-
-        logs = statsapi.player_stat_data(
-            player_id,
-            group="[hitting]",
-            type="gameLog"
-        )
-
-        games = logs.get(
-            'stats',
-            []
-        )
-
-        if not games:
-
-            return {
-                "recent_hr": 0,
-                "recent_hits": 0
-            }
-
-        recent = games[:7]
-
-        hr = 0
-        hits = 0
-
-        for g in recent:
-
-            s = g.get(
-                'stats',
-                {}
-            )
-
-            hr += int(
-                s.get(
-                    'homeRuns',
-                    0
-                )
-            )
-
-            hits += int(
-                s.get(
-                    'hits',
-                    0
-                )
-            )
-
-        return {
-            "recent_hr": hr,
-            "recent_hits": hits
-        }
-
-    except:
-
-        return {
-            "recent_hr": 0,
-            "recent_hits": 0
-        }
-
-# ==============================
-# WEATHER
-# ==============================
-
-def weather_boost(venue):
-
-    try:
-
-        if venue not in STADIUM_COORDS:
-            return 1.0
-
-        lat, lon = STADIUM_COORDS[venue]
-
-        url = (
-            f"https://api.openweathermap.org/data/2.5/weather?"
-            f"lat={lat}&lon={lon}"
-            f"&appid={weather_key}&units=imperial"
-        )
-
-        data = requests.get(url).json()
-
-        wind_speed = data.get(
-            "wind",
-            {}
-        ).get(
-            "speed",
-            5
-        )
-
-        wind_deg = data.get(
-            "wind",
-            {}
-        ).get(
-            "deg",
-            180
-        )
-
-        if 90 <= wind_deg <= 270:
-            return 1 + (wind_speed / 35)
-
-        return 1 - (wind_speed / 70)
-
-    except:
-
-        return 1.0
-
-# ==============================
-# PARK BOOST
-# ==============================
-
-def park_boost(venue):
-
-    return PARK_BOOST.get(
-        venue,
-        1.0
-    )
-
-# ==============================
-# LINEUP BOOST
-# ==============================
-
-def get_lineup_boost(index):
-
-    if index == 0:
-        return 1.15
-
-    if index == 1:
-        return 1.12
-
-    if index == 2:
-        return 1.10
-
-    if index == 3:
-        return 1.08
-
-    return 1.0
-
-# ==============================
-# REAL STATCAST DATA
-# ==============================
-
-def get_statcast_data(player_id):
-
-    global STATCAST_DATA
-
-    try:
-
-        if STATCAST_DATA is None:
-
-            print("Loading Statcast Data...")
-
-            STATCAST_DATA = (
-                statcast_batter_exitvelo_barrels(
-                    2025
-                )
-            )
-
-        data = STATCAST_DATA.copy()
-
-        data['player_id'] = data[
-            'player_id'
-        ].astype(str)
-
-        player = data[
-            data['player_id']
-            == str(player_id)
-        ]
-
-        if player.empty:
-
-            return {
-                "barrel_pct": 6.0,
-                "avg_ev": 88.0
-            }
-
-        row = player.iloc[0]
-
-        barrel_pct = float(
-            row.get(
-                'brl_percent',
-                6
-            )
-        )
-
-        avg_ev = float(
-            row.get(
-                'avg_hit_speed',
-                88
-            )
-        )
-
-        if barrel_pct == 0:
-            barrel_pct = 6.0
-
-        if avg_ev == 0:
-            avg_ev = 88.0
-
-        return {
-            "barrel_pct": barrel_pct,
-            "avg_ev": avg_ev
-        }
-
-    except Exception as e:
-
-        print(
-            f"Statcast Error: {e}"
-        )
-
-        return {
-            "barrel_pct": 6.0,
-            "avg_ev": 88.0
-        }
-
-# ==============================
-# CLASSIFY PICKS
-# ==============================
-
-def classify_pick(
-    barrel_pct,
-    iso,
-    ops,
-    recent_hr,
-    avg_ev
-):
-
-    if (
-        barrel_pct >= 12
-        and iso >= 0.220
-        and ops >= 0.850
-        and avg_ev >= 91
-    ):
-
-        return "🔥 SAFE PLAY"
-
-    if recent_hr >= 3:
-
-        return "💥 HIGH UPSIDE"
-
-    return "⚠️ LONGSHOT"
-
-# ==============================
-# TEAM PICKS
-# ==============================
-
-def get_team_picks(
-    team_id,
-    opponent_id,
-    venue,
-    team_name
-):
-
-    hitters = get_lineup(team_id)
-
-    pitcher_id = get_pitcher(opponent_id)
-
-    pitcher_boost = (
-        get_pitcher_matchup_boost(
-            pitcher_id
-        )
-        if pitcher_id else 1.0
-    )
-
-    weather = weather_boost(venue)
-    park = park_boost(venue)
-
-    scored = []
-
-    for idx, p in enumerate(hitters):
-
-        try:
-
-            stats = statsapi.player_stat_data(
-                p['id'],
-                group="[hitting]",
-                type="season"
-            )
-
-            s = stats['stats'][0]['stats']
-
-            hr = int(s.get('homeRuns', 0))
-            slg = float(s.get('slg', 0.400))
-            ops = float(s.get('ops', 0.700))
-            avg = float(s.get('avg', 0.250))
-
-            iso = slg - avg
-
-            statcast = get_statcast_data(
-                p['id']
-            )
-
-            barrel_pct = statcast[
-                'barrel_pct'
-            ]
-
-            avg_ev = statcast[
-                'avg_ev'
-            ]
-
-            # RECENT FORM
-
-            recent = get_recent_form(
-                p['id']
-            )
-
-            recent_hr = recent[
-                'recent_hr'
-            ]
-
-            recent_hits = recent[
-                'recent_hits'
-            ]
-
-            # LINEUP BOOST
-
-            lineup_boost = (
-                get_lineup_boost(idx)
-            )
-
-            # DAILY HR SCORE
-
-            score = (
-                (hr * 4)
-                + (slg * 140)
-                + (ops * 110)
-                + (iso * 220)
-                + (recent_hr * 18)
-                + (recent_hits * 2)
-                + (barrel_pct * 8)
-                + (avg_ev * 1.5)
-            )
-
-            # BOOSTS
-
-            score *= weather
-            score *= park
-            score *= pitcher_boost
-            score *= lineup_boost
-
-            label = classify_pick(
-                barrel_pct,
-                iso,
-                ops,
-                recent_hr,
-                avg_ev
-            )
-
-            tags = [
-                f"💣 HRs: {hr}",
-                f"💥 ISO: {round(iso,3)}",
-                f"⚾ SLG: {slg}",
-                f"🔥 OPS: {ops}",
-                f"🪵 Barrel%: {round(barrel_pct,1)}%",
-                f"🚀 ExitVelo: {round(avg_ev,1)}",
-                f"🔥 Last7HR: {recent_hr}",
-                f"⚾ Last7Hits: {recent_hits}",
-                f"🏷️ {label}"
-            ]
-
-            if barrel_pct >= 12:
-                tags.append("✅ Elite Barrel")
-
-            if recent_hr >= 3:
-                tags.append("✅ HOT HR FORM")
-
-            if pitcher_boost >= 1.15:
-                tags.append("✅ HR TARGET PITCHER")
-
-            if lineup_boost >= 1.10:
-                tags.append("✅ TOP LINEUP")
-
-            if weather > 1:
-                tags.append("✅ Wind Out")
-
-            if park > 1.1:
-                tags.append("✅ Great Park")
-
-            scored.append(
-                {
-                    "name": p['name'],
-                    "score": round(score,1),
-                    "tags": tags,
-                    "team": team_name
-                }
-            )
-
-        except Exception as e:
-
-            print(f"Player Error: {e}")
-
-            continue
-
-    scored = sorted(
-        scored,
-        key=lambda x: x['score'],
-        reverse=True
-    )
-
-    return scored[:3]
-
-# ==============================
-# SMART PARLAYS
-# ==============================
-
-def build_parlays(all_plays):
-
-    elite = []
-    upside = []
-
-    for p in all_plays:
-
-        barrel = 0
-        ev = 0
-        iso = 0
-        ops = 0
-
-        for t in p['tags']:
-
-            if "Barrel%" in t:
-                barrel = float(
-                    t.split(": ")[1]
-                    .replace("%","")
-                )
-
-            if "ExitVelo" in t:
-                ev = float(
-                    t.split(": ")[1]
-                )
-
-            if "ISO" in t:
-                iso = float(
-                    t.split(": ")[1]
-                )
-
-            if "OPS" in t:
-                ops = float(
-                    t.split(": ")[1]
-                )
-
-        # STRICT FILTERS
-
-        if barrel < 8:
-            continue
-
-        if iso < 0.180:
-            continue
-
-        if ops < 0.760:
-            continue
-
-        if ev < 89:
-            continue
-
-        # ELITE
-
-        if (
-            barrel >= 12
-            and iso >= 0.220
-            and ops >= 0.850
-            and ev >= 91
-        ):
-
-            elite.append(p)
-
-        else:
-
-            upside.append(p)
-
-    elite = sorted(
-        elite,
-        key=lambda x: x['score'],
-        reverse=True
-    )
-
-    upside = sorted(
-        upside,
-        key=lambda x: x['score'],
-        reverse=True
-    )
-
-    parlays = []
-
-    # SAFEST 2 LEG
-
-    if len(elite) >= 2:
-
-        first = elite[0]
-
-        second = None
-
-        for p in elite[1:]:
-
-            if (
-                p['team']
-                != first['team']
-            ):
-
-                second = p
-                break
-
-        if second:
-
-            parlays.append({
-                "title": "🔥 SAFEST HR 2-LEG",
-                "players": [
-                    first,
-                    second
-                ]
-            })
-
-    # UPSIDE 3 LEG
-
-    combo = []
-
-    if len(elite) >= 1:
-        combo.append(elite[0])
-
-    for p in upside:
-
-        same_team = False
-
-        for c in combo:
-
-            if (
-                c['team']
-                == p['team']
-            ):
-
-                same_team = True
-
-        if not same_team:
-
-            combo.append(p)
-
-        if len(combo) == 3:
-            break
-
-    if len(combo) == 3:
-
-        parlays.append({
-            "title": "💥 BEST UPSIDE 3-LEG",
-            "players": combo
-        })
-
-    return parlays
-
-# ==============================
-# BUILD MESSAGE
-# ==============================
-
-def build_message():
-
-    games = get_games_today()
-
-    msg = "🔥 DAILY HR SPOTS 🔥\n\n"
-
-    all_plays = []
-
-    for game in games:
-
-        venue = game.get(
-            'venue_name',
-            ''
-        )
-
-        away_team = game.get(
-            'away_name',
-            'Away Team'
-        )
-
-        home_team = game.get(
-            'home_name',
-            'Home Team'
-        )
-
-        away = get_team_picks(
-            game['away_id'],
-            game['home_id'],
-            venue,
-            away_team
-        )
-
-        home = get_team_picks(
-            game['home_id'],
-            game['away_id'],
-            venue,
-            home_team
-        )
-
-        all_plays.extend(away)
-        all_plays.extend(home)
-
-        # AWAY TEAM
-
-        msg += f"🔥 {away_team} 🔥\n\n"
-
-        for i, p in enumerate(away):
-
-            medal = "🥇"
-
-            if i == 1:
-                medal = "🥈"
-
-            elif i == 2:
-                medal = "🥉"
-
-            msg += f"{medal} {p['name']}\n"
-
-            for t in p['tags']:
-                msg += f"{t}\n"
-
-            msg += "\n---------------------\n\n"
-
-        # HOME TEAM
-
-        msg += f"🔥 {home_team} 🔥\n\n"
-
-        for i, p in enumerate(home):
-
-            medal = "🥇"
-
-            if i == 1:
-                medal = "🥈"
-
-            elif i == 2:
-                medal = "🥉"
-
-            msg += f"{medal} {p['name']}\n"
-
-            for t in p['tags']:
-                msg += f"{t}\n"
-
-            msg += "\n---------------------\n\n"
-
-    # PARLAYS
-
-    parlays = build_parlays(
-        all_plays
-    )
-
-    msg += "🔥 BEST HR PARLAYS 🔥\n\n"
-
-    for parlay in parlays:
-
-        msg += f"{parlay['title']}\n\n"
-
-        for p in parlay['players']:
-
-            msg += f"💣 {p['name']}\n"
-
-        msg += "\n---------------------\n\n"
-
-    return msg
+nhl_client = NHLClient()
 
 # ==============================
 # DISCORD
@@ -845,7 +27,7 @@ def build_message():
 def send_to_discord(message):
 
     if not webhook:
-        print("❌ NO WEBHOOK FOUND")
+        print("❌ NO WEBHOOK")
         return
 
     try:
@@ -890,6 +72,326 @@ def send_to_discord(message):
         )
 
 # ==============================
+# MLB
+# ==============================
+
+def get_mlb_picks():
+
+    today = datetime.now(
+        pytz.timezone("US/Eastern")
+    ).strftime('%Y-%m-%d')
+
+    games = statsapi.schedule(
+        date=today
+    )
+
+    picks = []
+
+    for game in games:
+
+        try:
+
+            away = game['away_name']
+            home = game['home_name']
+
+            home_score = 50
+
+            # HOME FIELD
+
+            home_score += 5
+
+            # RECORDS
+
+            home_wins = int(
+                game.get(
+                    'home_win_pct',
+                    '.500'
+                ).replace('.','')
+            )
+
+            away_wins = int(
+                game.get(
+                    'away_win_pct',
+                    '.500'
+                ).replace('.','')
+            )
+
+            if home_wins > away_wins:
+                home_score += 8
+
+            else:
+                home_score -= 5
+
+            # LAST 10
+
+            if "W" in game.get(
+                'home_streak',
+                ''
+            ):
+
+                home_score += 5
+
+            # WIN %
+
+            win_prob = min(
+                85,
+                max(
+                    50,
+                    home_score
+                )
+            )
+
+            reason = []
+
+            if home_score >= 60:
+                reason.append(
+                    "✅ Better Team Form"
+                )
+
+            if "W" in game.get(
+                'home_streak',
+                ''
+            ):
+
+                reason.append(
+                    "✅ Hot Streak"
+                )
+
+            reason.append(
+                "✅ Home Field"
+            )
+
+            picks.append({
+                "league": "MLB",
+                "team": home,
+                "prob": win_prob,
+                "reasons": reason
+            })
+
+        except Exception as e:
+
+            print(f"MLB Error: {e}")
+
+    return sorted(
+        picks,
+        key=lambda x: x['prob'],
+        reverse=True
+    )[:5]
+
+# ==============================
+# NBA
+# ==============================
+
+def get_nba_picks():
+
+    picks = []
+
+    try:
+
+        standings = (
+            leaguestandings.LeagueStandings()
+            .get_data_frames()[0]
+        )
+
+        standings = standings.sort_values(
+            by="WinPCT",
+            ascending=False
+        )
+
+        top = standings.head(5)
+
+        for _, row in top.iterrows():
+
+            team = row['TeamName']
+
+            pct = float(
+                row['WinPCT']
+            )
+
+            prob = int(
+                50 + (pct * 35)
+            )
+
+            reasons = [
+                "✅ Better Record",
+                "✅ Strong Team Form"
+            ]
+
+            if pct >= 0.700:
+                reasons.append(
+                    "✅ Elite Team"
+                )
+
+            picks.append({
+                "league": "NBA",
+                "team": team,
+                "prob": prob,
+                "reasons": reasons
+            })
+
+    except Exception as e:
+
+        print(f"NBA Error: {e}")
+
+    return picks[:5]
+
+# ==============================
+# NHL
+# ==============================
+
+def get_nhl_picks():
+
+    picks = []
+
+    try:
+
+        standings = (
+            nhl_client.standings.get_standings()
+        )
+
+        teams = standings[
+            'standings'
+        ]
+
+        for t in teams[:5]:
+
+            team = t['teamName']['default']
+
+            points_pct = float(
+                t.get(
+                    'pointPctg',
+                    0.500
+                )
+            )
+
+            prob = int(
+                50 + (points_pct * 35)
+            )
+
+            reasons = [
+                "✅ Better Team Form",
+                "✅ Better Record"
+            ]
+
+            if points_pct >= 0.650:
+                reasons.append(
+                    "✅ Elite Team"
+                )
+
+            picks.append({
+                "league": "NHL",
+                "team": team,
+                "prob": prob,
+                "reasons": reasons
+            })
+
+    except Exception as e:
+
+        print(f"NHL Error: {e}")
+
+    return picks[:5]
+
+# ==============================
+# BUILD MESSAGE
+# ==============================
+
+def build_message():
+
+    msg = "🔥 DAILY MONEYLINE BOARD 🔥\n\n"
+
+    # MLB
+
+    mlb = get_mlb_picks()
+
+    msg += "⚾ MLB PICKS\n\n"
+
+    for i, p in enumerate(mlb):
+
+        medal = "🥇"
+
+        if i == 1:
+            medal = "🥈"
+
+        elif i == 2:
+            medal = "🥉"
+
+        msg += (
+            f"{medal} {p['team']} ML\n"
+        )
+
+        msg += (
+            f"📊 Win Probability: "
+            f"{p['prob']}%\n"
+        )
+
+        for r in p['reasons']:
+            msg += f"{r}\n"
+
+        msg += "\n---------------------\n\n"
+
+    # NBA
+
+    nba = get_nba_picks()
+
+    msg += "🏀 NBA PICKS\n\n"
+
+    for i, p in enumerate(nba):
+
+        medal = "🥇"
+
+        if i == 1:
+            medal = "🥈"
+
+        elif i == 2:
+            medal = "🥉"
+
+        msg += (
+            f"{medal} {p['team']} ML\n"
+        )
+
+        msg += (
+            f"📊 Win Probability: "
+            f"{p['prob']}%\n"
+        )
+
+        for r in p['reasons']:
+            msg += f"{r}\n"
+
+        msg += "\n---------------------\n\n"
+
+    # NHL
+
+    nhl = get_nhl_picks()
+
+    msg += "🏒 NHL PICKS\n\n"
+
+    for i, p in enumerate(nhl):
+
+        medal = "🥇"
+
+        if i == 1:
+            medal = "🥈"
+
+        elif i == 2:
+            medal = "🥉"
+
+        msg += (
+            f"{medal} {p['team']} ML\n"
+        )
+
+        msg += (
+            f"📊 Win Probability: "
+            f"{p['prob']}%\n"
+        )
+
+        for r in p['reasons']:
+            msg += f"{r}\n"
+
+        msg += "\n---------------------\n\n"
+
+    return msg
+
+# ==============================
 # START BOT
 # ==============================
 
@@ -897,18 +399,18 @@ if __name__ == "__main__":
 
     try:
 
-        print("🔥 STARTING DAILY HR BOT")
+        print("🔥 STARTING MONEYLINE BOT")
 
-        msg = build_message()
+        message = build_message()
 
-        print(msg)
+        print(message)
 
-        send_to_discord(msg)
+        send_to_discord(message)
 
         print("✅ SENT TO DISCORD")
 
     except Exception as e:
 
         print(
-            f"❌ BOT CRASHED: {e}"
+            f"❌ BOT ERROR: {e}"
         )
