@@ -40,10 +40,10 @@ def send_to_discord(message):
         )
 
 # ==============================
-# TEAM FORM
+# TEAM FORM + STRENGTH
 # ==============================
 
-def get_team_form(team_name):
+def get_team_strength(team_name):
 
     try:
 
@@ -61,32 +61,30 @@ def get_team_form(team_name):
                     ):
 
                         wins = int(
-                            team.get(
-                                'w',
-                                0
-                            )
+                            team.get('w', 0)
                         )
 
                         losses = int(
-                            team.get(
-                                'l',
-                                0
-                            )
+                            team.get('l', 0)
                         )
 
-                        pct = (
-                            wins / (wins + losses)
-                            if wins + losses > 0
-                            else 0.5
+                        games = (
+                            wins + losses
                         )
 
-                        return pct
+                        if games == 0:
+                            return 0.500
+
+                        return round(
+                            wins / games,
+                            3
+                        )
 
     except:
 
         pass
 
-    return 0.5
+    return 0.500
 
 # ==============================
 # PITCHER STATS
@@ -147,39 +145,53 @@ def get_pitcher_stats(team_id):
         }
 
 # ==============================
-# PROJECT RUNS
+# PROJECT TEAM RUNS
 # ==============================
 
-def project_team_runs(
-    offense_form,
+def project_runs(
+    team_strength,
     opposing_pitcher
 ):
 
-    runs = 4.5
+    runs = 4.3
+
+    # TEAM STRENGTH
+
+    if team_strength >= 0.600:
+
+        runs += 1.0
+
+    elif team_strength >= 0.550:
+
+        runs += 0.5
+
+    elif team_strength <= 0.450:
+
+        runs -= 0.7
 
     # ERA
 
     if opposing_pitcher['era'] >= 5:
 
-        runs += 2.0
+        runs += 1.4
 
     elif opposing_pitcher['era'] >= 4:
 
-        runs += 1.0
+        runs += 0.7
 
     elif opposing_pitcher['era'] <= 3:
 
-        runs -= 1.0
+        runs -= 0.8
 
     # WHIP
 
     if opposing_pitcher['whip'] >= 1.40:
 
-        runs += 1.0
+        runs += 0.8
 
     elif opposing_pitcher['whip'] <= 1.10:
 
-        runs -= 0.7
+        runs -= 0.6
 
     # K9
 
@@ -189,25 +201,15 @@ def project_team_runs(
 
     elif opposing_pitcher['k9'] <= 7:
 
-        runs += 0.5
-
-    # TEAM FORM
-
-    if offense_form >= 0.600:
-
-        runs += 0.8
-
-    elif offense_form <= 0.450:
-
-        runs -= 0.7
+        runs += 0.4
 
     return round(runs, 1)
 
 # ==============================
-# MLB BOARD
+# BUILD BOARD
 # ==============================
 
-def get_mlb_board():
+def get_board():
 
     today = datetime.now(
         pytz.timezone("US/Eastern")
@@ -230,14 +232,14 @@ def get_mlb_board():
             home_id = game['home_id']
 
             # ======================
-            # FORM
+            # TEAM STRENGTH
             # ======================
 
-            home_form = get_team_form(
+            home_strength = get_team_strength(
                 home
             )
 
-            away_form = get_team_form(
+            away_strength = get_team_strength(
                 away
             )
 
@@ -254,16 +256,16 @@ def get_mlb_board():
             )
 
             # ======================
-            # PROJECT RUNS
+            # PROJECTED RUNS
             # ======================
 
-            home_runs = project_team_runs(
-                home_form,
+            home_runs = project_runs(
+                home_strength,
                 away_pitch
             )
 
-            away_runs = project_team_runs(
-                away_form,
+            away_runs = project_runs(
+                away_strength,
                 home_pitch
             )
 
@@ -298,17 +300,37 @@ def get_mlb_board():
                     away_runs - home_runs
                 )
 
+            # ======================
+            # REALISTIC CONFIDENCE
+            # ======================
+
             confidence = int(
-                60 + (edge * 6)
+                54 + (edge * 4)
             )
 
             confidence = max(
-                60,
+                54,
                 min(
-                    80,
+                    74,
                     confidence
                 )
             )
+
+            # ======================
+            # RUN LINE
+            # ======================
+
+            if edge >= 2:
+
+                run_line = (
+                    f"{ml_team} -1.5"
+                )
+
+            else:
+
+                run_line = (
+                    f"{ml_team} ML"
+                )
 
             # ======================
             # F5
@@ -327,23 +349,7 @@ def get_mlb_board():
                 f5_team = away
 
             # ======================
-            # RUN LINE
-            # ======================
-
-            if edge >= 1.5:
-
-                run_line = (
-                    f"{ml_team} -1.5"
-                )
-
-            else:
-
-                run_line = (
-                    f"{ml_team} ML"
-                )
-
-            # ======================
-            # TOTALS
+            # TOTAL BET
             # ======================
 
             projected_total = round(
@@ -352,32 +358,20 @@ def get_mlb_board():
 
             if projected_total >= 10:
 
-                betting_total = (
-                    projected_total - 0.5
-                )
-
                 total_bet = (
-                    f"OVER {betting_total}"
+                    f"OVER {projected_total - 0.5}"
                 )
 
             elif projected_total <= 7:
 
-                betting_total = (
-                    projected_total + 0.5
-                )
-
                 total_bet = (
-                    f"UNDER {betting_total}"
+                    f"UNDER {projected_total + 0.5}"
                 )
 
             else:
 
-                betting_total = (
-                    projected_total - 0.5
-                )
-
                 total_bet = (
-                    f"OVER {betting_total}"
+                    f"OVER {projected_total - 0.5}"
                 )
 
             board.append({
@@ -429,31 +423,29 @@ def get_mlb_board():
 
 def build_message():
 
-    board = get_mlb_board()
+    board = get_board()
 
     msg = (
-        "🔥 GOD TIER MLB BOARD 🔥\n\n"
+        "🔥 REAL STATS MLB BOARD 🔥\n\n"
     )
 
     for i, g in enumerate(board):
 
-        medal = "🥇"
+        medal = "⭐"
 
-        if i == 1:
+        if i == 0:
+            medal = "🥇"
+
+        elif i == 1:
             medal = "🥈"
 
         elif i == 2:
             medal = "🥉"
 
-        else:
-            medal = "⭐"
-
         msg += (
             f"{medal} "
             f"{g['matchup']}\n\n"
         )
-
-        # ML
 
         msg += (
             f"⚾ ML: "
@@ -465,21 +457,15 @@ def build_message():
             f"{g['confidence']}%\n\n"
         )
 
-        # RUN LINE
-
         msg += (
             f"⚾ Run Line: "
             f"{g['run_line']}\n\n"
         )
 
-        # F5
-
         msg += (
             f"⚾ F5 ML: "
             f"{g['f5_team']}\n\n"
         )
-
-        # SCORE
 
         msg += (
             f"🏟️ Projected Score\n"
@@ -492,8 +478,6 @@ def build_message():
         msg += (
             f"Away: {g['away_runs']}\n\n"
         )
-
-        # TOTALS
 
         msg += (
             f"🔥 Total Runs: "
@@ -520,7 +504,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING MLB BOT"
+            "🔥 STARTING REAL MLB MODEL"
         )
 
         msg = build_message()
