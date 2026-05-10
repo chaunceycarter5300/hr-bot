@@ -254,7 +254,7 @@ def get_mlb_board():
             )
 
             # ======================
-            # PROJECT RUNS
+            # PROJECTED RUNS
             # ======================
 
             home_runs = project_team_runs(
@@ -272,7 +272,7 @@ def get_mlb_board():
                 1
             )
 
-            # FORCE REALISTIC RANGE
+            # REALISTIC RANGE
 
             total_runs = max(
                 6.5,
@@ -289,6 +289,7 @@ def get_mlb_board():
             if home_runs > away_runs:
 
                 ml_team = home
+
                 edge = (
                     home_runs - away_runs
                 )
@@ -296,6 +297,7 @@ def get_mlb_board():
             else:
 
                 ml_team = away
+
                 edge = (
                     away_runs - home_runs
                 )
@@ -329,25 +331,47 @@ def get_mlb_board():
                 f5_team = away
 
             # ======================
-            # TOTAL BET
+            # SPORTSBOOK TOTALS
             # ======================
 
-            if total_runs >= 10:
+            projected_total = round(
+                total_runs * 2
+            ) / 2
 
-                total_bet = (
-                    f"OVER {total_runs}"
+            # OVERS
+
+            if projected_total >= 10:
+
+                betting_total = (
+                    projected_total - 0.5
                 )
 
-            elif total_runs <= 7.5:
+                total_bet = (
+                    f"OVER {betting_total}"
+                )
+
+            # UNDERS
+
+            elif projected_total <= 7:
+
+                betting_total = (
+                    projected_total + 0.5
+                )
 
                 total_bet = (
-                    f"UNDER {total_runs}"
+                    f"UNDER {betting_total}"
                 )
+
+            # MID RANGE
 
             else:
 
+                betting_total = (
+                    projected_total - 0.5
+                )
+
                 total_bet = (
-                    f"OVER {total_runs}"
+                    f"OVER {betting_total}"
                 )
 
             board.append({
@@ -460,7 +484,7 @@ def build_message():
         )
 
         # ======================
-        # TOTAL
+        # TOTALS
         # ======================
 
         msg += (
