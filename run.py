@@ -305,45 +305,67 @@ def get_team_hitters(team_id):
 
                 score = 0
 
-                # HR POWER
+                # ======================
+                # BASE POWER
+                # ======================
 
                 score += hr * 3
 
-                # OPS
-
                 score += ops * 10
 
-                # SLUGGING
-
                 score += slg * 15
-
-                # AVG
 
                 score += avg * 5
 
                 # ======================
-                # ELITE POWER BOOSTS
+                # LIGHTWEIGHT POWER LOGIC
                 # ======================
 
-                if hr >= 15:
+                # ELITE SLUGGING
+
+                if slg >= .550:
 
                     score += 10
 
-                elif hr >= 10:
+                elif slg >= .500:
 
                     score += 6
 
                 # ELITE OPS
 
-                if ops >= .900:
+                if ops >= .950:
 
                     score += 8
 
-                # ELITE SLG
+                elif ops >= .850:
 
-                if slg >= .500:
+                    score += 4
+
+                # HR POWER TIERS
+
+                if hr >= 20:
+
+                    score += 12
+
+                elif hr >= 15:
 
                     score += 8
+
+                elif hr >= 10:
+
+                    score += 5
+
+                # FLY BALL STYLE BOOST
+
+                if slg >= .500 and hr >= 10:
+
+                    score += 5
+
+                # TRUE POWER BAT BONUS
+
+                if ops >= .850 and slg >= .500:
+
+                    score += 5
 
                 hitters.append({
 
@@ -707,7 +729,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING BALANCED HR ENGINE"
+            "🔥 STARTING ULTIMATE BALANCED HR ENGINE"
         )
 
         msg = build_message()
