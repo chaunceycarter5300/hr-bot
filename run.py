@@ -1,8 +1,8 @@
 import os
 import requests
 import pytz
-import random
 import statsapi
+import random
 
 from datetime import datetime
 
@@ -153,113 +153,104 @@ def get_pitcher_stats(team_id):
         }
 
 # ==============================
-# DYNAMIC LINEUPS
+# LIVE TEAM HITTERS
 # ==============================
 
-team_hitters = {
+def get_team_hitters(team_id):
 
-    "Arizona Diamondbacks":
-    ["Ketel Marte", "Christian Walker"],
+    hitters = []
 
-    "Atlanta Braves":
-    ["Matt Olson", "Austin Riley"],
+    try:
 
-    "Baltimore Orioles":
-    ["Gunnar Henderson", "Adley Rutschman"],
+        roster = statsapi.get(
+            'team_roster',
+            {
+                'teamId': team_id,
+                'rosterType': 'active'
+            }
+        )
 
-    "Boston Red Sox":
-    ["Rafael Devers", "Triston Casas"],
+        for player in roster['roster']:
 
-    "Chicago Cubs":
-    ["Seiya Suzuki", "Ian Happ"],
+            try:
 
-    "Chicago White Sox":
-    ["Luis Robert Jr", "Andrew Vaughn"],
+                player_id = (
+                    player['person']['id']
+                )
 
-    "Cincinnati Reds":
-    ["Elly De La Cruz", "Spencer Steer"],
+                player_name = (
+                    player['person']['fullName']
+                )
 
-    "Cleveland Guardians":
-    ["Jose Ramirez", "Josh Naylor"],
+                stats = statsapi.player_stat_data(
+                    player_id,
+                    group="[hitting]",
+                    type="season"
+                )
 
-    "Colorado Rockies":
-    ["Ryan McMahon", "Ezequiel Tovar"],
+                s = stats['stats'][0]['stats']
 
-    "Detroit Tigers":
-    ["Riley Greene", "Spencer Torkelson"],
+                hr = int(
+                    s.get('homeRuns', 0)
+                )
 
-    "Houston Astros":
-    ["Yordan Alvarez", "Jose Altuve"],
+                slg = float(
+                    s.get(
+                        'slg',
+                        0.350
+                    )
+                )
 
-    "Kansas City Royals":
-    ["Bobby Witt Jr", "Salvador Perez"],
+                ops = float(
+                    s.get(
+                        'ops',
+                        0.650
+                    )
+                )
 
-    "Los Angeles Angels":
-    ["Mike Trout", "Taylor Ward"],
+                # HR SCORE
 
-    "Los Angeles Dodgers":
-    ["Shohei Ohtani", "Mookie Betts"],
+                score = 0
 
-    "Miami Marlins":
-    ["Jake Burger", "Josh Bell"],
+                score += hr * 1.5
+                score += slg * 12
+                score += ops * 8
 
-    "Milwaukee Brewers":
-    ["Christian Yelich", "Rhys Hoskins"],
+                hitters.append({
 
-    "Minnesota Twins":
-    ["Byron Buxton", "Carlos Correa"],
+                    "name":
+                    player_name,
 
-    "New York Mets":
-    ["Pete Alonso", "Juan Soto"],
+                    "score":
+                    score
 
-    "New York Yankees":
-    ["Aaron Judge", "Giancarlo Stanton"],
+                })
 
-    "Oakland Athletics":
-    ["Brent Rooker", "Shea Langeliers"],
+            except:
 
-    "Philadelphia Phillies":
-    ["Kyle Schwarber", "Bryce Harper"],
+                continue
 
-    "Pittsburgh Pirates":
-    ["Oneil Cruz", "Bryan Reynolds"],
+    except:
 
-    "San Diego Padres":
-    ["Fernando Tatis Jr", "Manny Machado"],
+        pass
 
-    "San Francisco Giants":
-    ["Matt Chapman", "Jung Hoo Lee"],
-
-    "Seattle Mariners":
-    ["Julio Rodriguez", "Cal Raleigh"],
-
-    "St. Louis Cardinals":
-    ["Nolan Arenado", "Paul Goldschmidt"],
-
-    "Tampa Bay Rays":
-    ["Yandy Diaz", "Isaac Paredes"],
-
-    "Texas Rangers":
-    ["Corey Seager", "Adolis Garcia"],
-
-    "Toronto Blue Jays":
-    ["Vladimir Guerrero Jr", "Bo Bichette"],
-
-    "Washington Nationals":
-    ["James Wood", "CJ Abrams"]
-
-}
+    return hitters
 
 # ==============================
-# HR CONFIDENCE
+# HR PROBABILITY
 # ==============================
 
 def calculate_hr_probability(
+    hitter_score,
     pitcher,
     team_strength
 ):
 
-    score = 16
+    score = 10
+
+    # HITTER SCORE
+
+    score += hitter_score / 8
 
     # HR/9
 
@@ -307,13 +298,56 @@ def calculate_hr_probability(
 
         score -= 3
 
-    return max(
-        12,
-        min(
-            40,
-            score
+    return int(
+        max(
+            12,
+            min(
+                40,
+                score
+            )
         )
     )
+
+# ==============================
+# PICK BEST HR HITTER
+# ==============================
+
+def get_best_hr_hitter(
+    hitters,
+    pitcher,
+    strength
+):
+
+    if not hitters:
+
+        return None
+
+    best = None
+    best_prob = 0
+
+    for hitter in hitters:
+
+        prob = calculate_hr_probability(
+            hitter['score'],
+            pitcher,
+            strength
+        )
+
+        if prob > best_prob:
+
+            best_prob = prob
+
+            best = {
+
+                "name":
+                hitter['name'],
+
+                "prob":
+                prob
+
+            }
+
+    return best
 
 # ==============================
 # BUILD BOARD
@@ -341,10 +375,6 @@ def get_board():
             away_id = game['away_id']
             home_id = game['home_id']
 
-            # ======================
-            # TEAM STRENGTH
-            # ======================
-
             home_strength = get_team_strength(
                 home
             )
@@ -352,10 +382,6 @@ def get_board():
             away_strength = get_team_strength(
                 away
             )
-
-            # ======================
-            # PITCHERS
-            # ======================
 
             home_pitch = get_pitcher_stats(
                 home_id
@@ -366,68 +392,60 @@ def get_board():
             )
 
             # ======================
-            # HOME HR PLAYER
+            # HOME TEAM
             # ======================
 
-            if home in team_hitters:
+            home_hitters = get_team_hitters(
+                home_id
+            )
 
-                home_hr = random.choice(
-                    team_hitters[home]
-                )
+            best_home = get_best_hr_hitter(
+                home_hitters,
+                away_pitch,
+                home_strength
+            )
 
-                home_hr_conf = (
-                    calculate_hr_probability(
-                        away_pitch,
-                        home_strength
-                    )
-                )
+            if best_home:
 
                 board.append({
-
-                    "player":
-                    home_hr,
 
                     "team":
                     home,
 
-                    "matchup":
-                    f"{away} vs {home}",
+                    "player":
+                    best_home['name'],
 
                     "prob":
-                    home_hr_conf
+                    best_home['prob']
 
                 })
 
             # ======================
-            # AWAY HR PLAYER
+            # AWAY TEAM
             # ======================
 
-            if away in team_hitters:
+            away_hitters = get_team_hitters(
+                away_id
+            )
 
-                away_hr = random.choice(
-                    team_hitters[away]
-                )
+            best_away = get_best_hr_hitter(
+                away_hitters,
+                home_pitch,
+                away_strength
+            )
 
-                away_hr_conf = (
-                    calculate_hr_probability(
-                        home_pitch,
-                        away_strength
-                    )
-                )
+            if best_away:
 
                 board.append({
-
-                    "player":
-                    away_hr,
 
                     "team":
                     away,
 
-                    "matchup":
-                    f"{away} vs {home}",
+                    "player":
+                    best_away['name'],
 
                     "prob":
-                    away_hr_conf
+                    best_away['prob']
 
                 })
 
@@ -441,7 +459,7 @@ def get_board():
         board,
         key=lambda x: x['prob'],
         reverse=True
-    )[:10]
+    )
 
 # ==============================
 # BUILD MESSAGE
@@ -452,7 +470,7 @@ def build_message():
     board = get_board()
 
     msg = (
-        "🔥 MOST LIKELY HR TODAY 🔥\n\n"
+        "🔥 MOST LIKELY HR BY TEAM 🔥\n\n"
     )
 
     for i, g in enumerate(board):
@@ -470,17 +488,12 @@ def build_message():
 
         msg += (
             f"{medal} "
-            f"{g['player']} HR\n\n"
+            f"{g['team']}\n\n"
         )
 
         msg += (
-            f"⚾ Team: "
-            f"{g['team']}\n"
-        )
-
-        msg += (
-            f"⚾ Matchup: "
-            f"{g['matchup']}\n"
+            f"💣 "
+            f"{g['player']} HR\n"
         )
 
         msg += (
@@ -503,7 +516,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING DYNAMIC HR MODEL"
+            "🔥 STARTING FINAL HR ENGINE"
         )
 
         msg = build_message()
