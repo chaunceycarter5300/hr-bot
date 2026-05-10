@@ -3,3 +3,4 @@ pytz
 pandas
 nba-api
 MLB-StatsAPI
+nhl-api-py
