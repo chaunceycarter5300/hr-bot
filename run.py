@@ -1,3 +1,4 @@
+```python
 import os
 import requests
 import pytz
@@ -29,6 +30,12 @@ def send_to_discord(message):
 
     try:
 
+        # DISCORD LIMIT
+
+        if len(message) > 1900:
+
+            message = message[:1900]
+
         response = requests.post(
 
             webhook,
@@ -39,15 +46,25 @@ def send_to_discord(message):
 
         )
 
-        print(
-            f"Discord Status: "
-            f"{response.status_code}"
-        )
+        # SUCCESS
+
+        if response.status_code in [200, 204]:
+
+            print("✅ SENT TO DISCORD")
+
+        else:
+
+            print(
+                f"❌ Discord Error: "
+                f"{response.status_code}"
+            )
+
+            print(response.text)
 
     except Exception as e:
 
         print(
-            f"Discord Error: {e}"
+            f"❌ Discord Exception: {e}"
         )
 
 # ==============================
@@ -79,13 +96,9 @@ def get_weather_boost(city):
 
         boost = 0
 
-        # HOT WEATHER
-
         if temp >= 80:
 
             boost += 2
-
-        # WIND
 
         if wind >= 10:
 
@@ -119,22 +132,14 @@ def get_team_strength(team_name):
                     ):
 
                         wins = int(
-                            team.get(
-                                'w',
-                                0
-                            )
+                            team.get('w', 0)
                         )
 
                         losses = int(
-                            team.get(
-                                'l',
-                                0
-                            )
+                            team.get('l', 0)
                         )
 
-                        games = (
-                            wins + losses
-                        )
+                        games = wins + losses
 
                         if games == 0:
 
@@ -189,17 +194,11 @@ def get_pitcher_stats(team_id):
         s = stats['stats'][0]['stats']
 
         era = float(
-            s.get(
-                'era',
-                4.00
-            )
+            s.get('era', 4.00)
         )
 
         whip = float(
-            s.get(
-                'whip',
-                1.30
-            )
+            s.get('whip', 1.30)
         )
 
         k9 = float(
@@ -263,12 +262,12 @@ def get_team_hitters(team_id):
 
             try:
 
-                player_id = (
-                    player['person']['id']
-                )
-
                 player_name = (
                     player['person']['fullName']
+                )
+
+                player_id = (
+                    player['person']['id']
                 )
 
                 stats = statsapi.player_stat_data(
@@ -303,9 +302,17 @@ def get_team_hitters(team_id):
                     )
                 )
 
-                # ======================
+                # SKIP WEAK HITTERS
+
+                if hr < 3:
+
+                    continue
+
+                if ops < 0.650:
+
+                    continue
+
                 # HR SCORE
-                # ======================
 
                 score = 0
 
@@ -348,11 +355,7 @@ def calculate_hr_probability(
 
     score = 10
 
-    # HITTER SCORE
-
     score += hitter_score / 10
-
-    # HR/9
 
     if pitcher['hr9'] >= 1.6:
 
@@ -362,8 +365,6 @@ def calculate_hr_probability(
 
         score += 6
 
-    # ERA
-
     if pitcher['era'] >= 5:
 
         score += 5
@@ -372,13 +373,9 @@ def calculate_hr_probability(
 
         score += 3
 
-    # WHIP
-
     if pitcher['whip'] >= 1.40:
 
         score += 4
-
-    # K9
 
     if pitcher['k9'] <= 7:
 
@@ -388,8 +385,6 @@ def calculate_hr_probability(
 
         score -= 3
 
-    # TEAM STRENGTH
-
     if team_strength >= 0.600:
 
         score += 5
@@ -397,8 +392,6 @@ def calculate_hr_probability(
     elif team_strength <= 0.450:
 
         score -= 3
-
-    # WEATHER
 
     score += weather_boost
 
@@ -491,8 +484,6 @@ def get_board():
             away_id = game['away_id']
             home_id = game['home_id']
 
-            # TEAM STRENGTH
-
             home_strength = get_team_strength(
                 home
             )
@@ -501,13 +492,9 @@ def get_board():
                 away
             )
 
-            # WEATHER
-
             weather_boost = get_weather_boost(
                 home
             )
-
-            # PITCHERS
 
             home_pitch = get_pitcher_stats(
                 home_id
@@ -516,8 +503,6 @@ def get_board():
             away_pitch = get_pitcher_stats(
                 away_id
             )
-
-            # HOME HITTERS
 
             home_hitters = get_team_hitters(
                 home_id
@@ -546,8 +531,6 @@ def get_board():
                     best_home['prob']
 
                 })
-
-            # AWAY HITTERS
 
             away_hitters = get_team_hitters(
                 away_id
@@ -590,7 +573,7 @@ def get_board():
         key=lambda x: x['prob'],
         reverse=True
 
-    )
+    )[:10]
 
 # ==============================
 # BUILD MESSAGE
@@ -601,7 +584,7 @@ def build_message():
     board = get_board()
 
     msg = (
-        "🔥 MOST LIKELY HR BY TEAM 🔥\\n\\n"
+        "🔥 MOST LIKELY HR TODAY 🔥\n\n"
     )
 
     for i, g in enumerate(board):
@@ -622,21 +605,21 @@ def build_message():
 
         msg += (
             f"{medal} "
-            f"{g['team']}\\n\\n"
+            f"{g['team']}\n\n"
         )
 
         msg += (
             f"💣 "
-            f"{g['player']} HR\\n"
+            f"{g['player']} HR\n"
         )
 
         msg += (
             f"📊 HR Confidence: "
-            f"{g['prob']}%\\n"
+            f"{g['prob']}%\n"
         )
 
         msg += (
-            "\\n----------------------\\n\\n"
+            "\n----------------------\n\n"
         )
 
     return msg
@@ -659,12 +642,9 @@ if __name__ == "__main__":
 
         send_to_discord(msg)
 
-        print(
-            "✅ SENT TO DISCORD"
-        )
-
     except Exception as e:
 
         print(
             f"❌ BOT ERROR: {e}"
         )
+```
