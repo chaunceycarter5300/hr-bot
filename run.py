@@ -2,6 +2,7 @@ import os
 import requests
 import pytz
 import statsapi
+import random
 
 from datetime import datetime
 
@@ -89,13 +90,9 @@ def get_weather_boost(city):
 
         boost = 0
 
-        # HOT WEATHER
-
         if temp >= 80:
 
             boost += 3
-
-        # WIND
 
         if wind >= 10:
 
@@ -232,6 +229,78 @@ def get_pitcher_stats(team_id):
         }
 
 # ==============================
+# LIGHTWEIGHT POWER PROFILE
+# ==============================
+
+def get_lightweight_power_boost(
+
+    hr,
+    ops,
+    slg
+
+):
+
+    boost = 0
+
+    # ======================
+    # BARREL STYLE BOOST
+    # ======================
+
+    if slg >= .550:
+
+        boost += 10
+
+    elif slg >= .500:
+
+        boost += 6
+
+    # ======================
+    # HARD HIT STYLE BOOST
+    # ======================
+
+    if ops >= .950:
+
+        boost += 8
+
+    elif ops >= .850:
+
+        boost += 4
+
+    # ======================
+    # TRUE POWER BAT
+    # ======================
+
+    if hr >= 20:
+
+        boost += 12
+
+    elif hr >= 15:
+
+        boost += 8
+
+    elif hr >= 10:
+
+        boost += 5
+
+    # ======================
+    # FLY BALL STYLE BOOST
+    # ======================
+
+    if slg >= .500 and hr >= 10:
+
+        boost += 5
+
+    # ======================
+    # DANGEROUS HR PROFILE
+    # ======================
+
+    if ops >= .850 and slg >= .500:
+
+        boost += 5
+
+    return boost
+
+# ==============================
 # LIVE TEAM HITTERS
 # ==============================
 
@@ -293,15 +362,9 @@ def get_team_hitters(team_id):
                     s.get('avg', 0.220)
                 )
 
-                # SKIP VERY WEAK BATS
-
                 if hr < 3:
 
                     continue
-
-                # ======================
-                # BALANCED HR SCORE
-                # ======================
 
                 score = 0
 
@@ -318,54 +381,16 @@ def get_team_hitters(team_id):
                 score += avg * 5
 
                 # ======================
-                # LIGHTWEIGHT POWER LOGIC
+                # LIGHTWEIGHT STATCAST
                 # ======================
 
-                # ELITE SLUGGING
+                score += get_lightweight_power_boost(
 
-                if slg >= .550:
+                    hr,
+                    ops,
+                    slg
 
-                    score += 10
-
-                elif slg >= .500:
-
-                    score += 6
-
-                # ELITE OPS
-
-                if ops >= .950:
-
-                    score += 8
-
-                elif ops >= .850:
-
-                    score += 4
-
-                # HR POWER TIERS
-
-                if hr >= 20:
-
-                    score += 12
-
-                elif hr >= 15:
-
-                    score += 8
-
-                elif hr >= 10:
-
-                    score += 5
-
-                # FLY BALL STYLE BOOST
-
-                if slg >= .500 and hr >= 10:
-
-                    score += 5
-
-                # TRUE POWER BAT BONUS
-
-                if ops >= .850 and slg >= .500:
-
-                    score += 5
+                )
 
                 hitters.append({
 
@@ -411,11 +436,9 @@ def calculate_hr_probability(
 
     score = 10
 
-    # BASE HITTER SCORE
-
     score += hitter['score'] / 10
 
-    # TRUE ELITE HR BAT
+    # TRUE ELITE POWER
 
     if hitter['hr'] >= 20:
 
@@ -473,7 +496,7 @@ def calculate_hr_probability(
 
         score -= 3
 
-    # TEAM STRENGTH
+    # TEAM QUALITY
 
     if team_strength >= 0.600:
 
@@ -492,7 +515,7 @@ def calculate_hr_probability(
         max(
             15,
             min(
-                45,
+                48,
                 score
             )
         )
@@ -729,7 +752,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING ULTIMATE BALANCED HR ENGINE"
+            "🔥 STARTING LIGHTWEIGHT STATCAST HR ENGINE"
         )
 
         msg = build_message()
