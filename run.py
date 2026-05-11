@@ -2,7 +2,6 @@ import os
 import requests
 import pytz
 import statsapi
-import random
 
 from datetime import datetime
 
@@ -229,10 +228,10 @@ def get_pitcher_stats(team_id):
         }
 
 # ==============================
-# LIGHTWEIGHT POWER PROFILE
+# CONTACT QUALITY BOOSTS
 # ==============================
 
-def get_lightweight_power_boost(
+def get_contact_quality_boost(
 
     hr,
     ops,
@@ -243,31 +242,39 @@ def get_lightweight_power_boost(
     boost = 0
 
     # ======================
-    # BARREL STYLE BOOST
+    # BARREL STYLE
     # ======================
 
-    if slg >= .550:
+    if slg >= .600:
 
-        boost += 10
+        boost += 12
+
+    elif slg >= .550:
+
+        boost += 8
 
     elif slg >= .500:
 
-        boost += 6
+        boost += 5
 
     # ======================
-    # HARD HIT STYLE BOOST
+    # HARD HIT STYLE
     # ======================
 
     if ops >= .950:
 
-        boost += 8
+        boost += 10
+
+    elif ops >= .900:
+
+        boost += 6
 
     elif ops >= .850:
 
-        boost += 4
+        boost += 3
 
     # ======================
-    # TRUE POWER BAT
+    # FLY BALL STYLE
     # ======================
 
     if hr >= 20:
@@ -283,20 +290,12 @@ def get_lightweight_power_boost(
         boost += 5
 
     # ======================
-    # FLY BALL STYLE BOOST
-    # ======================
-
-    if slg >= .500 and hr >= 10:
-
-        boost += 5
-
-    # ======================
-    # DANGEROUS HR PROFILE
+    # TRUE DANGEROUS BAT
     # ======================
 
     if ops >= .850 and slg >= .500:
 
-        boost += 5
+        boost += 6
 
     return boost
 
@@ -362,6 +361,8 @@ def get_team_hitters(team_id):
                     s.get('avg', 0.220)
                 )
 
+                # SKIP VERY WEAK BATS
+
                 if hr < 3:
 
                     continue
@@ -381,10 +382,10 @@ def get_team_hitters(team_id):
                 score += avg * 5
 
                 # ======================
-                # LIGHTWEIGHT STATCAST
+                # CONTACT QUALITY
                 # ======================
 
-                score += get_lightweight_power_boost(
+                score += get_contact_quality_boost(
 
                     hr,
                     ops,
@@ -436,29 +437,31 @@ def calculate_hr_probability(
 
     score = 10
 
+    # BASE HITTER SCORE
+
     score += hitter['score'] / 10
 
-    # TRUE ELITE POWER
+    # ELITE HR POWER
 
     if hitter['hr'] >= 20:
 
-        score += 8
+        score += 10
 
     elif hitter['hr'] >= 15:
 
-        score += 5
+        score += 6
 
     # ELITE OPS
 
     if hitter['ops'] >= .950:
 
-        score += 4
+        score += 5
 
     # ELITE SLG
 
     if hitter['slg'] >= .550:
 
-        score += 4
+        score += 5
 
     # HR/9
 
@@ -496,7 +499,7 @@ def calculate_hr_probability(
 
         score -= 3
 
-    # TEAM QUALITY
+    # TEAM STRENGTH
 
     if team_strength >= 0.600:
 
@@ -515,7 +518,7 @@ def calculate_hr_probability(
         max(
             15,
             min(
-                48,
+                50,
                 score
             )
         )
@@ -752,7 +755,7 @@ if __name__ == "__main__":
     try:
 
         print(
-            "🔥 STARTING LIGHTWEIGHT STATCAST HR ENGINE"
+            "🔥 STARTING CONTACT QUALITY HR ENGINE"
         )
 
         msg = build_message()
